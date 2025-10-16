@@ -1,0 +1,6 @@
+slack-bolt
+python-dotenv
+aiohttp
+notion-client
+apscheduler
+pytz
