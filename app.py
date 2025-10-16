@@ -22,15 +22,23 @@ app = AsyncApp(
 
 # Register all handlers from modules
 from src import register_all_handlers
+from src.schedule import get_scheduler
 
 # Register handlers
 register_all_handlers(app)
 logger.info("✅ Handlers registered successfully")
 
+# Initialize scheduler
+scheduler = get_scheduler(app)
+logger.info("✅ Scheduler initialized")
+
 
 async def main():
-  """Start the Socket Mode handler"""
+  """Start the Socket Mode handler and scheduler"""
   logger.info("🚀 Starting Secretary Slack Bot...")
+
+  # Start scheduler
+  scheduler.start()
 
   handler = AsyncSocketModeHandler(app, os.getenv("SLACK_APP_TOKEN"))
   await handler.start_async()

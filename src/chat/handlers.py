@@ -1,7 +1,6 @@
 """Chat message event handlers"""
 
 import logging
-import re
 from datetime import datetime
 
 import pytz
@@ -17,37 +16,6 @@ KST = pytz.timezone('Asia/Seoul')
 def register_chat_handlers(app):
   """Register all chat-related event handlers"""
 
-  @app.message(re.compile("(기상|아침|hey)"))
-  async def say_hello_regex(say, context, logger):
-    """Respond to English greetings"""
-    greeting = context['matches'][0]
-    logger.info(f"💬 Greeting: {greeting}")
-
-    blocks = [
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          "text": "좋은 아침이에요! 오늘도 화이팅! 💪"
-        }
-      },
-      {
-        "type": "actions",
-        "elements": [
-          {
-            "type": "button",
-            "text": {
-              "type": "plain_text",
-              "text": "기상 완료"
-            },
-            "action_id": "wake_up_complete",
-            "style": "primary"
-          }
-        ]
-      }
-    ]
-
-    await say(blocks=blocks)
 
   @app.action("wake_up_complete")
   async def handle_wake_up_complete(ack, body, client, logger):
