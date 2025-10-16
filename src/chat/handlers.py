@@ -51,36 +51,41 @@ def register_chat_handlers(app):
       # Update the message to remove buttons and show completion
       # 메시지 타임스탬프 가져오기 (슬래시 커맨드 vs 일반 메시지)
       message_ts = body.get("message", {}).get("ts") or body.get("container", {}).get("message_ts")
+      channel_id = body["channel"]["id"]
+
+      completion_blocks = [
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": completion_text
+          }
+        }
+      ]
 
       if message_ts:
-        await client.chat_update(
-            channel=body["channel"]["id"],
-            ts=message_ts,
-            text=completion_text,
-            blocks=[
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": completion_text
-                }
-              }
-            ]
-        )
+        try:
+          # 메시지 업데이트 시도
+          await client.chat_update(
+              channel=channel_id,
+              ts=message_ts,
+              text=completion_text,
+              blocks=completion_blocks
+          )
+        except Exception as update_error:
+          logger.warning(f"⚠️ 메시지 업데이트 실패, 새 메시지 발송: {update_error}")
+          # 업데이트 실패 시 새 메시지 발송
+          await client.chat_postMessage(
+              channel=channel_id,
+              text=completion_text,
+              blocks=completion_blocks
+          )
       else:
-        # 메시지 업데이트가 불가능한 경우 새 메시지 발송
+        # 메시지 타임스탬프가 없으면 새 메시지 발송
         await client.chat_postMessage(
-            channel=body["channel"]["id"],
+            channel=channel_id,
             text=completion_text,
-            blocks=[
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": completion_text
-                }
-              }
-            ]
+            blocks=completion_blocks
         )
 
     except Exception as e:
