@@ -32,15 +32,15 @@ class MorningScheduler:
 
     # 매일 아침 6시 30분 스케줄 등록
     self.scheduler.add_job(
-      self.send_morning_message,
-      trigger=CronTrigger(
-        hour=6,
-        minute=30,
-        timezone=KST
-      ),
-      id='morning_message',
-      name='아침 기상 메시지',
-      replace_existing=True
+        self.send_morning_message,
+        trigger=CronTrigger(
+            hour=6,
+            minute=30,
+            timezone=KST
+        ),
+        id='morning_message',
+        name='아침 기상 메시지',
+        replace_existing=True
     )
 
     logger.info("✅ 아침 메시지 스케줄 등록 완료 (매일 6:30 AM)")
@@ -87,9 +87,9 @@ class MorningScheduler:
       ]
 
       await self.app.client.chat_postMessage(
-        channel=self.channel_id,
-        blocks=blocks,
-        text="좋은 아침이에요! 오늘도 화이팅! 💪"
+          channel=self.channel_id,
+          blocks=blocks,
+          text="좋은 아침이에요! 오늘도 화이팅! 💪"
       )
 
       logger.info("✅ 아침 메시지 발송 완료")

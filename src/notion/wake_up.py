@@ -25,7 +25,7 @@ class WakeUpManager:
 
     if not self.database_id:
       raise ValueError(
-        "NOTION_WAKE_UP_DATABASE_ID environment variable is required")
+          "NOTION_WAKE_UP_DATABASE_ID environment variable is required")
 
   async def get_database_schema(self) -> dict:
     """
@@ -70,8 +70,8 @@ class WakeUpManager:
         }
       }
       results = await self.client.query_database(
-        database_id=self.database_id,
-        filter_params=filter_params
+          database_id=self.database_id,
+          filter_params=filter_params
       )
       count = len(results)
       logger.info(f"📊 {user_id}의 기상 기록: {count}개")

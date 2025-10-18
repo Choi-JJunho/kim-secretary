@@ -113,8 +113,8 @@ class NotionClient:
     """
     try:
       response = await self.client.pages.update(
-        page_id=page_id,
-        properties=properties
+          page_id=page_id,
+          properties=properties
       )
       logger.info(f"✅ 페이지 업데이트 완료: {page_id}")
       return response
@@ -134,8 +134,8 @@ class NotionClient:
     """
     try:
       response = await self.client.pages.update(
-        page_id=page_id,
-        archived=True
+          page_id=page_id,
+          archived=True
       )
       logger.info(f"🗑️ 페이지 아카이브 완료: {page_id}")
       return response
@@ -185,4 +185,3 @@ class NotionClient:
     except Exception as e:
       logger.error(f"❌ 데이터베이스 조회 실패: {e}")
       raise
-
