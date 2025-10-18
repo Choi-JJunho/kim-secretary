@@ -133,38 +133,43 @@ async def handle_work_log_webhook_message(
     # Prepare user mention
     user_mention = f"<@{user_id}>님의 " if user_id else ""
 
-    # Send initial response
+    # Create manager upfront to allow dynamic AI labeling (may remain selected value until fallback occurs)
+    work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
+    used_ai_label = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+
+    # Send initial response with dynamic AI label
     initial_message = await client.chat_postMessage(
         channel=REPORT_CHANNEL_ID,
         text=f"🚀 {user_mention}업무일지 AI 피드백 생성을 시작합니다.\n\n"
              f"📅 날짜: {date}\n"
-             f"🤖 AI: {ai_provider.upper()}\n"
+             f"🤖 AI: {used_ai_label}\n"
              f"🌶️ 맛: {flavor}\n\n"
              f"⏳ 처리 중..."
     )
 
     message_ts = initial_message.get("ts")
 
-    # Progress update function
-    async def update_progress(status: str):
-      try:
-        await client.chat_update(
-            channel=REPORT_CHANNEL_ID,
-            ts=message_ts,
-            text=(
-              f"🚀 {user_mention}업무일지 AI 피드백 생성 중...\n\n"
-              f"📅 날짜: {date}\n"
-              f"🤖 AI: {ai_provider.upper()}\n"
-              f"🌶️ 맛: {flavor}\n\n"
-              f"{status}"
-            )
-        )
-      except Exception as e:
-        logger.warning(f"⚠️ Failed to update progress: {e}")
-
     # Process feedback
     try:
-      work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
+      # work_log_mgr already created above
+
+      # Progress update function (reflects fallback provider if it occurs)
+      async def update_progress(status: str):
+        try:
+          used_ai = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+          await client.chat_update(
+              channel=REPORT_CHANNEL_ID,
+              ts=message_ts,
+              text=(
+                f"🚀 {user_mention}업무일지 AI 피드백 생성 중...\n\n"
+                f"📅 날짜: {date}\n"
+                f"🤖 AI: {used_ai}\n"
+                f"🌶️ 맛: {flavor}\n\n"
+                f"{status}"
+              )
+          )
+        except Exception as e:
+          logger.warning(f"⚠️ Failed to update progress: {e}")
       result = await work_log_mgr.process_feedback(
           date=date,
           database_id=database_id,
@@ -173,13 +178,14 @@ async def handle_work_log_webhook_message(
       )
 
       # Success response
+      used_ai = (result.get('used_ai_provider') if isinstance(result, dict) else None) or ai_provider
       await client.chat_update(
           channel=REPORT_CHANNEL_ID,
           ts=message_ts,
           text=(
             f"✅ {user_mention}업무일지 AI 피드백 생성 완료!\n\n"
             f"📅 날짜: {date}\n"
-            f"🤖 AI: {ai_provider.upper()}\n"
+            f"🤖 AI: {used_ai.upper()}\n"
             f"🌶️ 맛: {flavor}\n"
             f"📄 페이지 ID: {result['page_id']}\n"
             f"📝 피드백 길이: {result['feedback_length']}자"
@@ -190,13 +196,14 @@ async def handle_work_log_webhook_message(
 
     except ValueError as ve:
       # Validation error (page not found, already completed, etc.)
+      used_ai = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
       await client.chat_update(
           channel=REPORT_CHANNEL_ID,
           ts=message_ts,
           text=(
             f"⚠️ {user_mention}업무일지 피드백 생성 실패\n\n"
             f"📅 날짜: {date}\n"
-            f"🤖 AI: {ai_provider.upper()}\n"
+            f"🤖 AI: {used_ai}\n"
             f"🌶️ 맛: {flavor}\n\n"
             f"❌ 오류: {str(ve)}"
           )
@@ -205,13 +212,14 @@ async def handle_work_log_webhook_message(
 
     except Exception as e:
       # Unexpected error
+      used_ai = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
       await client.chat_update(
           channel=REPORT_CHANNEL_ID,
           ts=message_ts,
           text=(
             f"❌ {user_mention}업무일지 피드백 생성 중 오류 발생\n\n"
             f"📅 날짜: {date}\n"
-            f"🤖 AI: {ai_provider.upper()}\n"
+            f"🤖 AI: {used_ai}\n"
             f"🌶️ 맛: {flavor}\n\n"
             f"오류: {str(e)}"
           )

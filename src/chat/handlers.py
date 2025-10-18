@@ -182,54 +182,62 @@ def register_chat_handlers(app):
       }
 
       try:
-        # Send initial progress message with user mention
+        # Get work log manager upfront so initial AI label can reflect dynamic provider later
+        work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
+        used_ai_label = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+
+        # Send initial progress message with dynamic AI label
         progress_msg = await client.chat_postMessage(
             channel=channel_id,
             text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
                  f"📅 날짜: {selected_date}\n"
                  f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-                 f"🤖 AI: {ai_provider.upper()}\n"
+                 f"🤖 AI: {used_ai_label}\n"
                  f"⏳ 상태: 업무일지 검색 중..."
         )
 
         msg_ts = progress_msg["ts"]
 
-        # Get work log manager with selected AI provider
-        work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
-
         # Update: Finding work log
+        used_ai_now = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
         await client.chat_update(
             channel=channel_id,
             ts=msg_ts,
             text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
                  f"📅 날짜: {selected_date}\n"
                  f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-                 f"🤖 AI: {ai_provider.upper()}\n"
+                 f"🤖 AI: {used_ai_now}\n"
                  f"⏳ 상태: 업무일지 확인 중..."
         )
+
+        # Progress updater that reflects fallback provider if it occurs
+        async def progress_update(status: str):
+          used_ai_dyn = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+          return await client.chat_update(
+              channel=channel_id,
+              ts=msg_ts,
+              text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
+                   f"📅 날짜: {selected_date}\n"
+                   f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
+                   f"🤖 AI: {used_ai_dyn}\n"
+                   f"⏳ 상태: {status}"
+          )
 
         # Process feedback with progress updates
         result = await work_log_mgr.process_feedback(
             date=selected_date,
             database_id=database_id,
             flavor=feedback_flavor,
-            progress_callback=lambda status: client.chat_update(
-                channel=channel_id,
-                ts=msg_ts,
-                text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
-                     f"📅 날짜: {selected_date}\n"
-                     f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-                     f"🤖 AI: {ai_provider.upper()}\n"
-                     f"⏳ 상태: {status}"
-            )
+            progress_callback=progress_update
         )
 
         # Update with final success message
+        used_ai = (result.get('used_ai_provider') if isinstance(result, dict) else None) or ai_provider
         success_text = (
           f"<@{user_id}>님의 업무일지 AI 피드백 생성 완료! ✅\n\n"
           f"📅 날짜: {selected_date}\n"
           f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-          f"🤖 AI: {ai_provider.upper()}\n"
+          f"🤖 AI: {used_ai.upper()}\n"
           f"📝 피드백 길이: {result['feedback_length']}자\n\n"
           f"✨ Notion 페이지에서 확인하세요!"
         )
@@ -259,11 +267,12 @@ def register_chat_handlers(app):
 
       except Exception as e:
         # Handle other errors
+        used_ai = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
         error_text = (
           f"<@{user_id}>님의 업무일지 피드백 생성 실패 ❌\n\n"
           f"📅 날짜: {selected_date}\n"
           f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-          f"🤖 AI: {ai_provider.upper()}\n"
+          f"🤖 AI: {used_ai}\n"
           f"❌ 오류: {str(e)}\n\n"
           f"로그를 확인하거나 다시 시도해주세요."
         )

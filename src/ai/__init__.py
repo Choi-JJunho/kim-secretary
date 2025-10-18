@@ -52,7 +52,7 @@ async def generate_with_gemini_fallback(
     prompt: str,
     system_prompt: Optional[str] = None,
     **kwargs,
-) -> str:
+) -> tuple[str, str]:
   """
   Try generating with the selected provider; on failure, retry once with Gemini.
 
@@ -63,27 +63,30 @@ async def generate_with_gemini_fallback(
       **kwargs: Additional provider-specific params
 
   Returns:
-      Generated text from primary or Gemini fallback
+      Tuple of (generated_text, used_provider)
   """
   primary_type = (provider_type or "gemini").lower()
 
   # If primary is already Gemini, just use it directly
   if primary_type == "gemini":
     provider = get_ai_provider("gemini")
-    return await provider.generate(prompt=prompt, system_prompt=system_prompt, **kwargs)
+    text = await provider.generate(prompt=prompt, system_prompt=system_prompt, **kwargs)
+    return text, "gemini"
 
   # Try primary provider first
   try:
     provider = get_ai_provider(primary_type)
-    return await provider.generate(prompt=prompt, system_prompt=system_prompt, **kwargs)
+    text = await provider.generate(prompt=prompt, system_prompt=system_prompt, **kwargs)
+    return text, primary_type
   except Exception as e:
     logger.warning(
         f"Primary provider '{primary_type}' failed, retrying with Gemini... Error: {e}")
 
   # Fallback to Gemini once
   gemini_provider = get_ai_provider("gemini")
-  return await gemini_provider.generate(
+  text = await gemini_provider.generate(
       prompt=prompt,
       system_prompt=system_prompt,
       **kwargs,
   )
+  return text, "gemini"

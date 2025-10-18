@@ -89,6 +89,7 @@ class WorkLogManager:
     self.client = client or NotionClient()
     self.ai_provider_type = ai_provider_type
     self.ai_provider = ai.get_ai_provider(ai_provider_type)
+    self.last_used_ai_provider: Optional[str] = None
 
     # Load prompt template
     self.prompt_template = _load_prompt_template()
@@ -219,11 +220,13 @@ class WorkLogManager:
       prompt = prompt.replace("{date}", current_date)
 
       # Generate feedback using selected AI provider, with Gemini fallback on failure
-      feedback = await ai.generate_with_gemini_fallback(
+      feedback, used_provider = await ai.generate_with_gemini_fallback(
           self.ai_provider_type,
           prompt=prompt,
           system_prompt=system_prompt,
       )
+      # Track the actual provider used (for logs/UI)
+      self.last_used_ai_provider = used_provider
       logger.info(f"✅ AI feedback generated ({len(feedback)} chars)")
       return feedback
 
@@ -384,6 +387,18 @@ class WorkLogManager:
     # 5. Generate AI feedback
     await update_progress(f"🤖 AI 피드백 생성 중... (내용 길이: {len(content)}자)")
     feedback = await self.generate_feedback(content)
+    # If fallback occurred, notify via progress update
+    try:
+      if self.last_used_ai_provider and \
+         self.last_used_ai_provider.lower() != (self.ai_provider_type or "").lower():
+        await update_progress(
+            f"⚠️ 선택한 AI({self.ai_provider_type}) 실패로 "
+            f"{self.last_used_ai_provider.upper()}로 대체하여 생성했습니다.")
+        logger.info(
+            f"🔁 AI provider fallback: {self.ai_provider_type} -> {self.last_used_ai_provider}")
+    except Exception as _:
+      # Do not fail the flow due to progress notification issues
+      pass
 
     # 6. Append feedback to page
     await update_progress("📝 Notion 페이지에 피드백 추가 중...")
@@ -398,7 +413,8 @@ class WorkLogManager:
       "success": True,
       "date": date,
       "page_id": page_id,
-      "feedback_length": len(feedback)
+      "feedback_length": len(feedback),
+      "used_ai_provider": self.last_used_ai_provider or self.ai_provider_type,
     }
 
 
