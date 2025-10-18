@@ -76,17 +76,25 @@ class WorkLogManager:
     self.prompt_template = _load_prompt_template()
     logger.info(f"✅ WorkLogManager initialized (AI: {ai_provider_type})")
 
-  async def find_work_log_by_date(self, date: str) -> Optional[Dict]:
+  async def find_work_log_by_date(
+      self,
+      date: str,
+      database_id: Optional[str] = None
+  ) -> Optional[Dict]:
     """
     Find work log page by date
 
     Args:
         date: Date string in ISO format (YYYY-MM-DD)
+        database_id: Notion database ID (uses env var if not provided)
 
     Returns:
         First matching page or None
     """
     try:
+      # Use provided database_id or fall back to default
+      db_id = database_id or self.database_id
+
       filter_params = {
         "property": "작성일",
         "date": {
@@ -95,7 +103,7 @@ class WorkLogManager:
       }
 
       results = await self.client.query_database(
-          database_id=self.database_id,
+          database_id=db_id,
           filter_params=filter_params
       )
 
@@ -280,7 +288,8 @@ class WorkLogManager:
       self,
       date: str,
       flavor: str = "normal",
-      progress_callback: Optional[Callable[[str], any]] = None
+      progress_callback: Optional[Callable[[str], any]] = None,
+      database_id: Optional[str] = None
   ) -> Dict[str, any]:
     """
     Process feedback workflow for a specific date
@@ -289,6 +298,7 @@ class WorkLogManager:
         date: Date string in ISO format (YYYY-MM-DD)
         flavor: Feedback flavor (spicy, normal, mild)
         progress_callback: Optional callback function to report progress
+        database_id: Notion database ID (uses env var if not provided)
 
     Returns:
         Result dictionary with status and message
@@ -296,8 +306,12 @@ class WorkLogManager:
     Raises:
         ValueError: If page not found or already completed
     """
+    # Use provided database_id or fall back to default
+    db_id = database_id or self.database_id
+
     logger.info(
-        f"🔄 Starting feedback process for date: {date}, flavor: {flavor}")
+        f"🔄 Starting feedback process for date: {date}, flavor: {flavor}, "
+        f"database: {db_id}")
 
     # Helper to call progress callback if provided
     async def update_progress(status: str):
@@ -309,7 +323,7 @@ class WorkLogManager:
 
     # 1. Find work log page
     await update_progress("📋 업무일지 검색 중...")
-    page = await self.find_work_log_by_date(date)
+    page = await self.find_work_log_by_date(date, database_id=db_id)
     if not page:
       raise ValueError(f"업무일지를 찾을 수 없습니다: {date}")
 

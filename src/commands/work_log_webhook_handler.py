@@ -29,7 +29,8 @@ def parse_work_log_message(message_text: str) -> Optional[Dict]:
     "date": "2025-10-18",
     "ai_provider": "gemini",
     "flavor": "normal",
-    "user_id": "U12345678"
+    "user_id": "U12345678",
+    "database_id": "290b3645abb5803fb2d6d8577918ac2f"
   }
   ```
 
@@ -46,7 +47,8 @@ def parse_work_log_message(message_text: str) -> Optional[Dict]:
         "date": data.get("date"),
         "ai_provider": data.get("ai_provider", "gemini"),
         "flavor": data.get("flavor", "normal"),
-        "user_id": data.get("user_id")
+        "user_id": data.get("user_id"),
+        "database_id": data.get("database_id")  # Optional: uses env var if not provided
       }
   except (json.JSONDecodeError, ValueError):
     pass
@@ -87,6 +89,7 @@ async def handle_work_log_webhook_message(
     ai_provider = parsed_data.get("ai_provider", "gemini")
     flavor = parsed_data.get("flavor", "normal")
     user_id = parsed_data.get("user_id")
+    database_id = parsed_data.get("database_id")  # Optional
 
     # Validate date format
     if not date or not re.match(r'^\d{4}-\d{2}-\d{2}$', date):
@@ -154,7 +157,8 @@ async def handle_work_log_webhook_message(
       result = await work_log_mgr.process_feedback(
           date=date,
           flavor=flavor,
-          progress_callback=update_progress
+          progress_callback=update_progress,
+          database_id=database_id  # Optional: uses env var if None
       )
 
       # Success response
