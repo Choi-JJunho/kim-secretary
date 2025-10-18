@@ -241,7 +241,7 @@ def register_chat_handlers(app):
         success_text = (
           f"<@{user_id}>님의 업무일지 AI 피드백 생성 완료! ✅\n\n"
           f"📅 날짜: {selected_date}\n"
-          f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
+          f"{flavor_emoji(feedback_flavor)} 피드백: {flavor_label(feedback_flavor)}\n"
           f"🤖 AI: {used_ai.upper()}\n"
           f"📝 피드백 길이: {result['feedback_length']}자\n\n"
           f"✨ Notion 페이지에서 확인하세요!"
@@ -295,7 +295,7 @@ def register_chat_handlers(app):
         error_text = (
           f"<@{user_id}>님의 업무일지 피드백 생성 실패 ❌\n\n"
           f"📅 날짜: {selected_date}\n"
-          f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
+          f"{flavor_emoji(feedback_flavor)} 피드백: {flavor_label(feedback_flavor)}\n"
           f"🤖 AI: {used_ai}\n"
           f"❌ 오류: {str(e)}\n\n"
           f"로그를 확인하거나 다시 시도해주세요."

@@ -13,6 +13,8 @@ from ..common.slack_utils import (
   build_initial_text,
   build_progress_text,
   get_used_ai_label,
+  flavor_emoji,
+  flavor_label,
 )
 
 logger = logging.getLogger(__name__)
@@ -145,7 +147,7 @@ async def handle_work_log_webhook_message(
           user_mention=user_mention,
           date=date,
           ai_label=used_ai_label,
-          flavor_line=f"🌶️ 맛: {flavor}",
+          flavor_line=f"{flavor_emoji(flavor)} 피드백: {flavor_label(flavor)}",
         )
     )
 
@@ -166,7 +168,7 @@ async def handle_work_log_webhook_message(
                 user_mention=user_mention,
                 date=date,
                 ai_label=used_ai,
-                flavor_line=f"🌶️ 맛: {flavor}",
+                flavor_line=f"{flavor_emoji(flavor)} 피드백: {flavor_label(flavor)}",
                 status=status,
               )
           )
