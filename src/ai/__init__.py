@@ -1,11 +1,23 @@
 """AI provider abstraction layer"""
 
+import logging
+from typing import Optional
+
 from .base import AIProvider
 from .claude import ClaudeProvider
 from .gemini import GeminiProvider
 from .ollama import OllamaProvider
 
-__all__ = ["AIProvider", "ClaudeProvider", "GeminiProvider", "OllamaProvider"]
+logger = logging.getLogger(__name__)
+
+__all__ = [
+  "AIProvider",
+  "ClaudeProvider",
+  "GeminiProvider",
+  "OllamaProvider",
+  "get_ai_provider",
+  "generate_with_gemini_fallback",
+]
 
 
 def get_ai_provider(provider_type: str = "gemini") -> AIProvider:
@@ -32,3 +44,46 @@ def get_ai_provider(provider_type: str = "gemini") -> AIProvider:
     )
 
   return provider_class()
+
+
+async def generate_with_gemini_fallback(
+    provider_type: str,
+    *,
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    **kwargs,
+) -> str:
+  """
+  Try generating with the selected provider; on failure, retry once with Gemini.
+
+  Args:
+      provider_type: Primary provider type (gemini, claude, ollama)
+      prompt: User/content prompt
+      system_prompt: Optional system instructions
+      **kwargs: Additional provider-specific params
+
+  Returns:
+      Generated text from primary or Gemini fallback
+  """
+  primary_type = (provider_type or "gemini").lower()
+
+  # If primary is already Gemini, just use it directly
+  if primary_type == "gemini":
+    provider = get_ai_provider("gemini")
+    return await provider.generate(prompt=prompt, system_prompt=system_prompt, **kwargs)
+
+  # Try primary provider first
+  try:
+    provider = get_ai_provider(primary_type)
+    return await provider.generate(prompt=prompt, system_prompt=system_prompt, **kwargs)
+  except Exception as e:
+    logger.warning(
+        f"Primary provider '{primary_type}' failed, retrying with Gemini... Error: {e}")
+
+  # Fallback to Gemini once
+  gemini_provider = get_ai_provider("gemini")
+  return await gemini_provider.generate(
+      prompt=prompt,
+      system_prompt=system_prompt,
+      **kwargs,
+  )

@@ -218,10 +218,11 @@ class WorkLogManager:
       prompt = f"{self.prompt_template}\n\n## 업무일지 내용\n\n{work_log_content}"
       prompt = prompt.replace("{date}", current_date)
 
-      # Generate feedback using AI provider with Notion markdown guide
-      feedback = await self.ai_provider.generate(
+      # Generate feedback using selected AI provider, with Gemini fallback on failure
+      feedback = await ai.generate_with_gemini_fallback(
+          self.ai_provider_type,
           prompt=prompt,
-          system_prompt=system_prompt
+          system_prompt=system_prompt,
       )
       logger.info(f"✅ AI feedback generated ({len(feedback)} chars)")
       return feedback
