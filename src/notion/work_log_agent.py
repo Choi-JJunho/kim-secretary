@@ -126,7 +126,7 @@ class WorkLogManager:
       properties = page.get("properties", {})
 
       feedback_status = properties.get("AI 검토 완료 여부", {})
-      status_value = feedback_status.get("select", {})
+      status_value = feedback_status.get("select") or {}
       status_name = status_value.get("name", "")
 
       is_completed = status_name == "완료"
