@@ -27,12 +27,15 @@ def parse_work_log_message(message_text: str) -> Optional[Dict]:
   {
     "action": "work_log_feedback",
     "date": "2025-10-18",
+    "database_id": "290b3645abb5803fb2d6d8577918ac2f",
     "ai_provider": "gemini",
     "flavor": "normal",
-    "user_id": "U12345678",
-    "database_id": "290b3645abb5803fb2d6d8577918ac2f"
+    "user_id": "U12345678"
   }
   ```
+
+  Required fields: action, date, database_id
+  Optional fields: ai_provider (default: gemini), flavor (default: normal), user_id
 
   Args:
       message_text: Message text to parse
@@ -89,13 +92,21 @@ async def handle_work_log_webhook_message(
     ai_provider = parsed_data.get("ai_provider", "gemini")
     flavor = parsed_data.get("flavor", "normal")
     user_id = parsed_data.get("user_id")
-    database_id = parsed_data.get("database_id")  # Optional
+    database_id = parsed_data.get("database_id")  # Required
 
     # Validate date format
     if not date or not re.match(r'^\d{4}-\d{2}-\d{2}$', date):
       await client.chat_postMessage(
           channel=REPORT_CHANNEL_ID,
           text=f"❌ 잘못된 날짜 형식입니다: {date}\n올바른 형식: YYYY-MM-DD"
+      )
+      return
+
+    # Validate database_id is provided
+    if not database_id:
+      await client.chat_postMessage(
+          channel=REPORT_CHANNEL_ID,
+          text=f"❌ database_id가 필요합니다.\nJSON에 database_id를 포함해주세요."
       )
       return
 
@@ -156,9 +167,9 @@ async def handle_work_log_webhook_message(
       work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
       result = await work_log_mgr.process_feedback(
           date=date,
+          database_id=database_id,
           flavor=flavor,
-          progress_callback=update_progress,
-          database_id=database_id  # Optional: uses env var if None
+          progress_callback=update_progress
       )
 
       # Success response

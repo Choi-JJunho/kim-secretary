@@ -1,5 +1,6 @@
 """Chat message event handlers"""
 
+import json
 import logging
 import os
 import re
@@ -137,9 +138,29 @@ def register_chat_handlers(app):
 
       user_id = body["user"]["id"]
 
+      # Get database_id from user mapping
+      database_mapping_str = os.getenv("NOTION_WORK_DATABASE_MAPPING", "{}")
+      try:
+        database_mapping = json.loads(database_mapping_str)
+      except json.JSONDecodeError:
+        logger.error(f"❌ Failed to parse NOTION_WORK_DATABASE_MAPPING")
+        database_mapping = {}
+
+      database_id = database_mapping.get(user_id)
+
+      if not database_id:
+        logger.error(f"❌ No database mapping found for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 업무일지 데이터베이스를 찾을 수 없습니다.\n"
+                 f"관리자에게 문의하세요. (User ID: {user_id})"
+        )
+        return
+
       logger.info(
           f"📝 Processing work log feedback: date={selected_date}, "
-          f"flavor={feedback_flavor}, ai={ai_provider}"
+          f"flavor={feedback_flavor}, ai={ai_provider}, db={database_id}"
       )
 
       # Acknowledge modal submission immediately
@@ -189,7 +210,8 @@ def register_chat_handlers(app):
 
         # Process feedback with progress updates
         result = await work_log_mgr.process_feedback(
-            selected_date,
+            date=selected_date,
+            database_id=database_id,
             flavor=feedback_flavor,
             progress_callback=lambda status: client.chat_update(
                 channel=channel_id,

@@ -15,9 +15,6 @@ logger = logging.getLogger(__name__)
 # KST timezone
 KST = pytz.timezone('Asia/Seoul')
 
-# Database ID from environment variable
-WORK_LOG_DATABASE_ID = os.getenv("NOTION_WORK_LOG_DATABASE_ID")
-
 
 def _load_prompt_template(flavor: str = "normal") -> str:
   """
@@ -68,7 +65,6 @@ class WorkLogManager:
         ai_provider_type: AI provider type (gemini, claude, ollama)
     """
     self.client = client or NotionClient()
-    self.database_id = WORK_LOG_DATABASE_ID
     self.ai_provider_type = ai_provider_type
     self.ai_provider = ai.get_ai_provider(ai_provider_type)
 
@@ -79,22 +75,19 @@ class WorkLogManager:
   async def find_work_log_by_date(
       self,
       date: str,
-      database_id: Optional[str] = None
+      database_id: str
   ) -> Optional[Dict]:
     """
     Find work log page by date
 
     Args:
         date: Date string in ISO format (YYYY-MM-DD)
-        database_id: Notion database ID (uses env var if not provided)
+        database_id: Notion database ID (required)
 
     Returns:
         First matching page or None
     """
     try:
-      # Use provided database_id or fall back to default
-      db_id = database_id or self.database_id
-
       filter_params = {
         "property": "작성일",
         "date": {
@@ -103,7 +96,7 @@ class WorkLogManager:
       }
 
       results = await self.client.query_database(
-          database_id=db_id,
+          database_id=database_id,
           filter_params=filter_params
       )
 
@@ -287,18 +280,18 @@ class WorkLogManager:
   async def process_feedback(
       self,
       date: str,
+      database_id: str,
       flavor: str = "normal",
-      progress_callback: Optional[Callable[[str], any]] = None,
-      database_id: Optional[str] = None
+      progress_callback: Optional[Callable[[str], any]] = None
   ) -> Dict[str, any]:
     """
     Process feedback workflow for a specific date
 
     Args:
         date: Date string in ISO format (YYYY-MM-DD)
+        database_id: Notion database ID (required)
         flavor: Feedback flavor (spicy, normal, mild)
         progress_callback: Optional callback function to report progress
-        database_id: Notion database ID (uses env var if not provided)
 
     Returns:
         Result dictionary with status and message
@@ -306,12 +299,9 @@ class WorkLogManager:
     Raises:
         ValueError: If page not found or already completed
     """
-    # Use provided database_id or fall back to default
-    db_id = database_id or self.database_id
-
     logger.info(
         f"🔄 Starting feedback process for date: {date}, flavor: {flavor}, "
-        f"database: {db_id}")
+        f"database: {database_id}")
 
     # Helper to call progress callback if provided
     async def update_progress(status: str):
@@ -323,7 +313,7 @@ class WorkLogManager:
 
     # 1. Find work log page
     await update_progress("📋 업무일지 검색 중...")
-    page = await self.find_work_log_by_date(date, database_id=db_id)
+    page = await self.find_work_log_by_date(date, database_id=database_id)
     if not page:
       raise ValueError(f"업무일지를 찾을 수 없습니다: {date}")
 
