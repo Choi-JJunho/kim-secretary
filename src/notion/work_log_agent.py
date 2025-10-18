@@ -297,7 +297,7 @@ class WorkLogManager:
         ValueError: If page not found or already completed
     """
     logger.info(
-      f"🔄 Starting feedback process for date: {date}, flavor: {flavor}")
+        f"🔄 Starting feedback process for date: {date}, flavor: {flavor}")
 
     # Helper to call progress callback if provided
     async def update_progress(status: str):

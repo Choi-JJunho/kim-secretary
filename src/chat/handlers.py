@@ -2,16 +2,14 @@
 
 import logging
 import os
+import re
 from datetime import datetime
 
 import pytz
 
+from ..commands.work_log_webhook_handler import handle_work_log_webhook_message
 from ..notion.wake_up import get_wake_up_manager
 from ..notion.work_log_agent import get_work_log_manager
-from ..commands.work_log_webhook_handler import (
-    handle_work_log_webhook_message,
-    parse_work_log_message
-)
 
 logger = logging.getLogger(__name__)
 
@@ -20,30 +18,24 @@ KST = pytz.timezone('Asia/Seoul')
 
 # Webhook channel ID
 WEBHOOK_CHANNEL_ID = os.getenv("SLACK_WORK_LOG_WEBHOOK_CHANNEL_ID")
+# Report channel ID
+REPORT_CHANNEL_ID = os.getenv("SLACK_WORK_LOG_REPORT_CHANNEL_ID")
 
 
 def register_chat_handlers(app):
   """Register all chat-related event handlers"""
 
-  @app.event("message")
-  async def handle_message_events(event, say, client):
-    """Handle all message events"""
-    # Ignore bot messages and message subtypes
-    if event.get("subtype") is not None:
+  # Work log webhook handler - JSON format only
+  @app.message(re.compile(r'\{"action"\s*:\s*"work_log_feedback"'))
+  async def handle_work_log_webhook(message, say, client):
+    """Handle work log feedback webhook message from incoming webhook"""
+    # Check if message is from webhook channel
+    channel_id = message.get("channel")
+    if channel_id != WEBHOOK_CHANNEL_ID:
       return
 
-    # Check if this is a work log webhook message
-    channel_id = event.get("channel")
-    if channel_id == WEBHOOK_CHANNEL_ID:
-      message_text = event.get("text", "")
-      if parse_work_log_message(message_text):
-        # Handle work log webhook message
-        await handle_work_log_webhook_message(event, say, client)
-        return
-
-    # Handle other message types here if needed
-    # For now, just ignore other messages
-    pass
+    logger.info(f"📥 Received work log webhook request")
+    await handle_work_log_webhook_message(message, say, client)
 
   @app.action("wake_up_complete")
   async def handle_wake_up_complete(ack, body, client, logger):
@@ -153,25 +145,8 @@ def register_chat_handlers(app):
       # Acknowledge modal submission immediately
       await ack()
 
-      # Get channel from trigger (modal was opened from a channel)
-      # Use the channel where the command was triggered
-      channel_id = None
-
-      # Try to get channel from various possible locations
-      if "view" in body and "private_metadata" in body["view"]:
-        # If we stored it in private_metadata
-        import json
-        try:
-          metadata = json.loads(body["view"]["private_metadata"])
-          channel_id = metadata.get("channel_id")
-        except:
-          pass
-
-      # Fallback: send to a default channel or user's DM
-      if not channel_id:
-        # Send to user's DM instead
-        dm_response = await client.conversations_open(users=[user_id])
-        channel_id = dm_response["channel"]["id"]
+      # Send work log feedback messages to the report channel
+      channel_id = REPORT_CHANNEL_ID
 
       # Flavor emoji mapping
       flavor_emoji = {
