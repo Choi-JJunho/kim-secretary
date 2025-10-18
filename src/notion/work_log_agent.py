@@ -49,6 +49,28 @@ def _load_prompt_template(flavor: str = "normal") -> str:
     return "업무일지를 검토하고 피드백을 제공해주세요."
 
 
+def _load_notion_markdown_guide() -> str:
+  """
+  Load Notion markdown guide system prompt
+
+  Returns:
+      Notion markdown guide content
+  """
+  guide_file = os.path.join(
+      os.path.dirname(__file__),
+      "..",
+      "prompts",
+      "notion_markdown_guide.txt"
+  )
+
+  try:
+    with open(guide_file, "r", encoding="utf-8") as f:
+      return f.read()
+  except FileNotFoundError:
+    logger.warning(f"⚠️ Notion markdown guide not found: {guide_file}")
+    return ""
+
+
 class WorkLogManager:
   """Manager for work log AI feedback"""
 
@@ -189,12 +211,18 @@ class WorkLogManager:
     try:
       current_date = datetime.now(KST).strftime("%Y-%m-%d")
 
+      # Load Notion markdown guide as system prompt
+      system_prompt = _load_notion_markdown_guide()
+
       # Build full prompt
       prompt = f"{self.prompt_template}\n\n## 업무일지 내용\n\n{work_log_content}"
       prompt = prompt.replace("{date}", current_date)
 
-      # Generate feedback using AI provider
-      feedback = await self.ai_provider.generate(prompt)
+      # Generate feedback using AI provider with Notion markdown guide
+      feedback = await self.ai_provider.generate(
+          prompt=prompt,
+          system_prompt=system_prompt
+      )
       logger.info(f"✅ AI feedback generated ({len(feedback)} chars)")
       return feedback
 
