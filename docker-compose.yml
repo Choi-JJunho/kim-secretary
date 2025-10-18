@@ -8,7 +8,8 @@ services:
 
     volumes:
       # Claude CLI 인증 정보 마운트 (호스트의 .claude 디렉토리)
-      - /root/.claude:/root/.claude:ro
+      # 읽기/쓰기 권한 필요 (CLI가 debug 로그 작성)
+      - /root/.claude:/root/.claude
 
     environment:
       # Application Configuration
