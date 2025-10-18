@@ -240,8 +240,8 @@ class WorkLogManager:
         feedback: Feedback text to append
     """
     try:
-      # Helper: simple fixed-size chunking (<= 2000 chars) for full coverage
-      def _chunk_text(text: str, max_len: int = 2000):
+      # Helper: simple fixed-size chunking (<= 1900 chars) for safety margin
+      def _chunk_text(text: str, max_len: int = 1900):
         if not text:
           return []
         return [text[i:i + max_len] for i in range(0, len(text), max_len)]
@@ -280,7 +280,7 @@ class WorkLogManager:
             ]
           }
         }
-        for chunk in _chunk_text(feedback, 2000)
+        for chunk in _chunk_text(feedback, 1900)
       ]
 
       all_blocks = header_blocks + chunk_blocks
