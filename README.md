@@ -120,3 +120,8 @@ secretary/
 - Python 3.13+ 타입 힌트 사용
 - 비동기 함수 (`async/await`) 활용
 - 한글 주석 및 docstring
+
+```js
+
+
+```

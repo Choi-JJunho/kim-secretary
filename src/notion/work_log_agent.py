@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 # KST timezone
 KST = pytz.timezone('Asia/Seoul')
 
-# Database ID from comment
-WORK_LOG_DATABASE_ID = "290b3645abb5803fb2d6d8577918ac2f"
+# Database ID from environment variable
+WORK_LOG_DATABASE_ID = os.getenv("NOTION_WORK_LOG_DATABASE_ID")
 
 
 def _load_prompt_template(flavor: str = "normal") -> str:

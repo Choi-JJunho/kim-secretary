@@ -22,8 +22,6 @@ class NotionClient:
 
     # 데이터베이스 ID
     self.wake_up_database_id = os.getenv("NOTION_WAKE_UP_DATABASE_ID")
-    self.task_database_id = os.getenv("NOTION_TASK_DATABASE_ID")
-    self.routine_database_id = os.getenv("NOTION_ROUTINE_DATABASE_ID")
 
     logger.info("✅ Notion 클라이언트 초기화 완료")
 

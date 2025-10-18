@@ -1,21 +1,49 @@
 """Chat message event handlers"""
 
 import logging
+import os
 from datetime import datetime
 
 import pytz
 
 from ..notion.wake_up import get_wake_up_manager
 from ..notion.work_log_agent import get_work_log_manager
+from ..commands.work_log_webhook_handler import (
+    handle_work_log_webhook_message,
+    parse_work_log_message
+)
 
 logger = logging.getLogger(__name__)
 
 # KST timezone
 KST = pytz.timezone('Asia/Seoul')
 
+# Webhook channel ID
+WEBHOOK_CHANNEL_ID = os.getenv("SLACK_WORK_LOG_WEBHOOK_CHANNEL_ID")
+
 
 def register_chat_handlers(app):
   """Register all chat-related event handlers"""
+
+  @app.event("message")
+  async def handle_message_events(event, say, client):
+    """Handle all message events"""
+    # Ignore bot messages and message subtypes
+    if event.get("subtype") is not None:
+      return
+
+    # Check if this is a work log webhook message
+    channel_id = event.get("channel")
+    if channel_id == WEBHOOK_CHANNEL_ID:
+      message_text = event.get("text", "")
+      if parse_work_log_message(message_text):
+        # Handle work log webhook message
+        await handle_work_log_webhook_message(event, say, client)
+        return
+
+    # Handle other message types here if needed
+    # For now, just ignore other messages
+    pass
 
   @app.action("wake_up_complete")
   async def handle_wake_up_complete(ack, body, client, logger):
