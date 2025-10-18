@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import shutil
 from typing import Optional
 
@@ -19,12 +20,21 @@ class ClaudeProvider(AIProvider):
     logger.info("✅ Claude CLI provider initialized")
 
   def validate_config(self) -> bool:
-    """Validate Claude CLI is available"""
+    """Validate Claude CLI is available and authenticated"""
     if not shutil.which("claude"):
       raise ValueError(
           "Claude CLI not found. "
           "Install from: https://docs.anthropic.com/claude/docs/claude-cli"
       )
+
+    # Check if authentication directory exists
+    auth_dir = os.path.expanduser("~/.claude")
+    if not os.path.exists(auth_dir):
+      logger.warning(
+          "⚠️ Claude auth directory not found at ~/.claude. "
+          "You may need to run 'claude auth login' first."
+      )
+
     return True
 
   async def generate(

@@ -6,6 +6,10 @@ services:
     container_name: kim-secretary
     restart: unless-stopped
 
+    volumes:
+      # Claude CLI 인증 정보 마운트 (호스트의 .claude 디렉토리)
+      - /root/.claude:/root/.claude:ro
+
     environment:
       # Application Configuration
       PYTHONUNBUFFERED: 1
