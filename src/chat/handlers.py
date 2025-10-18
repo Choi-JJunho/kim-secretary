@@ -179,6 +179,11 @@ def register_chat_handlers(app):
       try:
         # Get work log manager upfront so initial AI label can reflect dynamic provider later
         work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
+        # 이전 작업 잔여 상태 초기화 (초기 메시지 표기 안정화)
+        try:
+          work_log_mgr.last_used_ai_provider = None
+        except Exception:
+          pass
         used_ai_label = get_used_ai_label(work_log_mgr, ai_provider)
 
         # Send initial progress message with dynamic AI label
@@ -247,6 +252,25 @@ def register_chat_handlers(app):
             ts=msg_ts,
             text=success_text
         )
+
+        # 스레드에 생성된 피드백 전문 게시
+        try:
+          from ..common.slack_utils import split_text_for_slack
+          feedback_text = result.get('feedback') if isinstance(result, dict) else None
+          if feedback_text:
+            header = (
+              f"🧵 AI 피드백 전문\n"
+              f"🤖 AI: {used_ai} | {flavor_emoji(feedback_flavor)} 피드백: {flavor_label(feedback_flavor)}\n\n"
+            )
+            combined = header + feedback_text
+            for chunk in split_text_for_slack(combined):
+              await client.chat_postMessage(
+                  channel=channel_id,
+                  thread_ts=msg_ts,
+                  text=chunk
+              )
+        except Exception as e:
+          logger.warning(f"⚠️ 스레드에 피드백 전문 게시 실패: {e}")
 
         logger.info(f"✅ Work log feedback completed: {selected_date}")
 

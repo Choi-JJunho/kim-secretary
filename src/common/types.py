@@ -7,7 +7,7 @@ from typing import Literal, Optional, TypedDict
 ProviderType = Literal["gemini", "claude", "ollama", "codex"]
 
 
-class WorkLogProcessResult(TypedDict):
+class WorkLogProcessResult(TypedDict, total=False):
   """업무일지 피드백 처리 결과 타입"""
 
   success: bool
@@ -15,6 +15,7 @@ class WorkLogProcessResult(TypedDict):
   page_id: str
   feedback_length: int
   used_ai_provider: str
+  feedback: str
 
 
 class WorkLogRequest(TypedDict, total=False):
@@ -26,4 +27,3 @@ class WorkLogRequest(TypedDict, total=False):
   ai_provider: ProviderType
   flavor: Literal["spicy", "normal", "mild"]
   user_id: Optional[str]
-

@@ -131,6 +131,11 @@ async def handle_work_log_webhook_message(
 
     # Create manager upfront to allow dynamic AI labeling (may remain selected value until fallback occurs)
     work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
+    # 이전 작업 잔여 상태 초기화 (초기 메시지 표기 안정화)
+    try:
+      work_log_mgr.last_used_ai_provider = None
+    except Exception:
+      pass
     used_ai_label = get_used_ai_label(work_log_mgr, ai_provider)
 
     # Send initial response with dynamic AI label
@@ -190,6 +195,25 @@ async def handle_work_log_webhook_message(
       )
 
       logger.info(f"✅ Work log feedback completed: {result}")
+
+      # Post full feedback in thread
+      try:
+        from ..common.slack_utils import split_text_for_slack
+        feedback_text = result.get('feedback') if isinstance(result, dict) else None
+        if feedback_text:
+          header = (
+            f"🧵 AI 피드백 전문\n"
+            f"🤖 AI: {used_ai.upper()} | 🌶️ 맛: {flavor}\n\n"
+          )
+          combined = header + feedback_text
+          for chunk in split_text_for_slack(combined):
+            await client.chat_postMessage(
+                channel=REPORT_CHANNEL_ID,
+                thread_ts=message_ts,
+                text=chunk
+            )
+      except Exception as e:
+        logger.warning(f"⚠️ 스레드에 피드백 전문 게시 실패: {e}")
 
     except ValueError as ve:
       # Validation error (page not found, already completed, etc.)

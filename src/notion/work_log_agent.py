@@ -299,8 +299,10 @@ class WorkLogManager:
         ValueError: If page not found or already completed
     """
     logger.info(
-        f"🔄 Starting feedback process for date: {date}, flavor: {flavor}, "
-        f"database: {database_id}")
+        f"🔄 피드백 처리 시작: 날짜={date}, 맛={flavor}, 데이터베이스={database_id}")
+
+    # 새 작업 시작 시 사용된 제공자 상태 초기화 (진행 라벨 일관성 유지)
+    self.last_used_ai_provider = None
 
     # Helper to call progress callback if provided
     async def update_progress(status: str):
@@ -367,6 +369,7 @@ class WorkLogManager:
       "page_id": page_id,
       "feedback_length": len(feedback),
       "used_ai_provider": self.last_used_ai_provider or self.ai_provider_type,
+      "feedback": feedback,
     }
 
 

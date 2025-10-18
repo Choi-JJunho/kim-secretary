@@ -48,3 +48,13 @@ def build_progress_text(user_mention: str, date: str, ai_label: str, flavor_line
     f"{status}"
   )
 
+
+def split_text_for_slack(text: str, max_len: int = 3500) -> list[str]:
+  """Slack 스레드에 긴 텍스트를 안전하게 분할 (기본 3500자)
+
+  - 블록 텍스트 제한(3000)보다 넉넉히 여유를 둔 3500자 사용
+  - 메시지 텍스트로 전송하므로 여유분 포함
+  """
+  if not text:
+    return []
+  return [text[i:i + max_len] for i in range(0, len(text), max_len)]
