@@ -28,7 +28,8 @@ def parse_work_log_message(message_text: str) -> Optional[Dict]:
     "action": "work_log_feedback",
     "date": "2025-10-18",
     "ai_provider": "gemini",
-    "flavor": "normal"
+    "flavor": "normal",
+    "user_id": "U12345678"
   }
   ```
 
@@ -44,7 +45,8 @@ def parse_work_log_message(message_text: str) -> Optional[Dict]:
       return {
         "date": data.get("date"),
         "ai_provider": data.get("ai_provider", "gemini"),
-        "flavor": data.get("flavor", "normal")
+        "flavor": data.get("flavor", "normal"),
+        "user_id": data.get("user_id")
       }
   except (json.JSONDecodeError, ValueError):
     pass
@@ -84,6 +86,7 @@ async def handle_work_log_webhook_message(
     date = parsed_data.get("date")
     ai_provider = parsed_data.get("ai_provider", "gemini")
     flavor = parsed_data.get("flavor", "normal")
+    user_id = parsed_data.get("user_id")
 
     # Validate date format
     if not date or not re.match(r'^\d{4}-\d{2}-\d{2}$', date):
@@ -113,10 +116,13 @@ async def handle_work_log_webhook_message(
       )
       return
 
+    # Prepare user mention
+    user_mention = f"<@{user_id}>님의 " if user_id else ""
+
     # Send initial response
     initial_message = await client.chat_postMessage(
         channel=REPORT_CHANNEL_ID,
-        text=f"🚀 업무일지 AI 피드백 생성을 시작합니다.\n\n"
+        text=f"🚀 {user_mention}업무일지 AI 피드백 생성을 시작합니다.\n\n"
              f"📅 날짜: {date}\n"
              f"🤖 AI: {ai_provider.upper()}\n"
              f"🌶️ 맛: {flavor}\n\n"
@@ -132,7 +138,7 @@ async def handle_work_log_webhook_message(
             channel=REPORT_CHANNEL_ID,
             ts=message_ts,
             text=(
-              f"🚀 업무일지 AI 피드백 생성 중...\n\n"
+              f"🚀 {user_mention}업무일지 AI 피드백 생성 중...\n\n"
               f"📅 날짜: {date}\n"
               f"🤖 AI: {ai_provider.upper()}\n"
               f"🌶️ 맛: {flavor}\n\n"
@@ -156,7 +162,7 @@ async def handle_work_log_webhook_message(
           channel=REPORT_CHANNEL_ID,
           ts=message_ts,
           text=(
-            f"✅ 업무일지 AI 피드백 생성 완료!\n\n"
+            f"✅ {user_mention}업무일지 AI 피드백 생성 완료!\n\n"
             f"📅 날짜: {date}\n"
             f"🤖 AI: {ai_provider.upper()}\n"
             f"🌶️ 맛: {flavor}\n"
@@ -173,7 +179,7 @@ async def handle_work_log_webhook_message(
           channel=REPORT_CHANNEL_ID,
           ts=message_ts,
           text=(
-            f"⚠️ 업무일지 피드백 생성 실패\n\n"
+            f"⚠️ {user_mention}업무일지 피드백 생성 실패\n\n"
             f"📅 날짜: {date}\n"
             f"🤖 AI: {ai_provider.upper()}\n"
             f"🌶️ 맛: {flavor}\n\n"
@@ -188,7 +194,7 @@ async def handle_work_log_webhook_message(
           channel=REPORT_CHANNEL_ID,
           ts=message_ts,
           text=(
-            f"❌ 업무일지 피드백 생성 중 오류 발생\n\n"
+            f"❌ {user_mention}업무일지 피드백 생성 중 오류 발생\n\n"
             f"📅 날짜: {date}\n"
             f"🤖 AI: {ai_provider.upper()}\n"
             f"🌶️ 맛: {flavor}\n\n"
