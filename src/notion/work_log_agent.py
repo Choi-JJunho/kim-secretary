@@ -240,8 +240,14 @@ class WorkLogManager:
         feedback: Feedback text to append
     """
     try:
-      # Create feedback blocks with divider and header
-      feedback_blocks = [
+      # Helper: simple fixed-size chunking (<= 2000 chars) for full coverage
+      def _chunk_text(text: str, max_len: int = 2000):
+        if not text:
+          return []
+        return [text[i:i + max_len] for i in range(0, len(text), max_len)]
+
+      # Build blocks: divider + header + chunked paragraphs
+      header_blocks = [
         {
           "object": "block",
           "type": "divider",
@@ -259,6 +265,9 @@ class WorkLogManager:
             ]
           }
         },
+      ]
+
+      chunk_blocks = [
         {
           "object": "block",
           "type": "paragraph",
@@ -266,18 +275,24 @@ class WorkLogManager:
             "rich_text": [
               {
                 "type": "text",
-                "text": {"content": feedback}
+                "text": {"content": chunk}
               }
             ]
           }
         }
+        for chunk in _chunk_text(feedback, 2000)
       ]
 
-      # Append blocks to page
-      await self.client.client.blocks.children.append(
-          block_id=page_id,
-          children=feedback_blocks
-      )
+      all_blocks = header_blocks + chunk_blocks
+
+      # Notion API: max 100 children per append call -> batch appends
+      BATCH_SIZE = 100
+      for i in range(0, len(all_blocks), BATCH_SIZE):
+        batch = all_blocks[i:i + BATCH_SIZE]
+        await self.client.client.blocks.children.append(
+            block_id=page_id,
+            children=batch
+        )
 
       logger.info(f"✅ Feedback appended to page: {page_id}")
 
