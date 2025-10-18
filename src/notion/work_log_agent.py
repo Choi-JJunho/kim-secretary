@@ -1,4 +1,4 @@
-"""Work log feedback management using Notion API and AI"""
+"""Notion API와 AI를 활용한 업무일지 피드백 관리"""
 
 import logging
 import os
@@ -72,7 +72,7 @@ def _load_notion_markdown_guide() -> str:
 
 
 class WorkLogManager:
-  """Manager for work log AI feedback"""
+  """업무일지 AI 피드백 처리 매니저"""
 
   def __init__(
       self,
@@ -243,59 +243,11 @@ class WorkLogManager:
         feedback: Feedback text to append
     """
     try:
-      # Helper: simple fixed-size chunking (<= 1900 chars) for safety margin
-      def _chunk_text(text: str, max_len: int = 1900):
-        if not text:
-          return []
-        return [text[i:i + max_len] for i in range(0, len(text), max_len)]
+      # 공통 유틸을 사용해 블록 생성 및 배치 추가
+      from ..common.notion_blocks import build_ai_feedback_blocks, append_blocks_batched
 
-      # Build blocks: divider + header + chunked paragraphs
-      header_blocks = [
-        {
-          "object": "block",
-          "type": "divider",
-          "divider": {}
-        },
-        {
-          "object": "block",
-          "type": "heading_2",
-          "heading_2": {
-            "rich_text": [
-              {
-                "type": "text",
-                "text": {"content": "🤖 AI 피드백"}
-              }
-            ]
-          }
-        },
-      ]
-
-      chunk_blocks = [
-        {
-          "object": "block",
-          "type": "paragraph",
-          "paragraph": {
-            "rich_text": [
-              {
-                "type": "text",
-                "text": {"content": chunk}
-              }
-            ]
-          }
-        }
-        for chunk in _chunk_text(feedback, 1900)
-      ]
-
-      all_blocks = header_blocks + chunk_blocks
-
-      # Notion API: max 100 children per append call -> batch appends
-      BATCH_SIZE = 100
-      for i in range(0, len(all_blocks), BATCH_SIZE):
-        batch = all_blocks[i:i + BATCH_SIZE]
-        await self.client.client.blocks.children.append(
-            block_id=page_id,
-            children=batch
-        )
+      blocks = build_ai_feedback_blocks(feedback)
+      await append_blocks_batched(self.client.client, page_id, blocks)
 
       logger.info(f"✅ Feedback appended to page: {page_id}")
 

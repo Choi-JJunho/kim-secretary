@@ -1,4 +1,4 @@
-"""Claude Code CLI provider"""
+"""Claude Code CLI 제공자 (로컬 CLI)"""
 
 import asyncio
 import logging
@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class ClaudeProvider(AIProvider):
-  """Claude Code CLI provider"""
+  """Claude Code CLI 제공자"""
 
   def __init__(self):
-    """Initialize Claude CLI provider"""
+    """Claude CLI 제공자 초기화"""
     self.validate_config()
     logger.info("✅ Claude CLI provider initialized")
 
@@ -43,24 +43,14 @@ class ClaudeProvider(AIProvider):
       system_prompt: Optional[str] = None,
       **kwargs
   ) -> str:
-    """
-    Generate response using Claude CLI
-
-    Args:
-        prompt: User prompt/content
-        system_prompt: System instructions (prepended to prompt)
-        **kwargs: Ignored for CLI provider
-
-    Returns:
-        Generated text
-    """
+    """Claude CLI를 사용하여 응답 생성"""
     try:
       # Combine system prompt with user prompt if provided
       full_prompt = prompt
       if system_prompt:
         full_prompt = f"{system_prompt}\n\n{prompt}"
 
-      logger.info("🤖 Generating Claude response via CLI...")
+      logger.info("🤖 Claude CLI 응답 생성 중...")
 
       # Run claude CLI command
       process = await asyncio.create_subprocess_exec(
@@ -78,9 +68,9 @@ class ClaudeProvider(AIProvider):
         raise RuntimeError(f"Claude CLI failed: {error_msg}")
 
       result = stdout.decode().strip()
-      logger.info(f"✅ Claude response generated ({len(result)} chars)")
+      logger.info(f"✅ Claude 응답 생성 완료 ({len(result)}자)")
       return result
 
     except Exception as e:
-      logger.error(f"❌ Claude generation failed: {e}")
+      logger.error(f"❌ Claude 응답 생성 실패: {e}")
       raise

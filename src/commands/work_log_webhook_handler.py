@@ -9,6 +9,11 @@ from typing import Dict, Optional
 from slack_bolt.async_app import AsyncApp
 
 from ..notion.work_log_agent import get_work_log_manager
+from ..common.slack_utils import (
+  build_initial_text,
+  build_progress_text,
+  get_used_ai_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,29 +24,20 @@ REPORT_CHANNEL_ID = os.getenv("SLACK_WORK_LOG_REPORT_CHANNEL_ID")
 
 
 def parse_work_log_message(message_text: str) -> Optional[Dict]:
-  """
-  Parse work log feedback request from message text
+  """메시지 텍스트에서 업무일지 피드백 요청 파싱 (JSON 형식)
 
-  Supports JSON format only:
-  ```json
+  지원 형식 (JSON 문자열):
   {
     "action": "work_log_feedback",
     "date": "2025-10-18",
-    "database_id": "290b3645abb5803fb2d6d8577918ac2f",
+    "database_id": "...",
     "ai_provider": "gemini",
     "flavor": "normal",
     "user_id": "U12345678"
   }
-  ```
 
-  Required fields: action, date, database_id
-  Optional fields: ai_provider (default: gemini), flavor (default: normal), user_id
-
-  Args:
-      message_text: Message text to parse
-
-  Returns:
-      Parsed data dictionary or None if not a valid request
+  필수: action, date, database_id
+  선택: ai_provider(gemini 기본), flavor(normal 기본), user_id
   """
   try:
     data = json.loads(message_text.strip())
@@ -135,16 +131,17 @@ async def handle_work_log_webhook_message(
 
     # Create manager upfront to allow dynamic AI labeling (may remain selected value until fallback occurs)
     work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
-    used_ai_label = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+    used_ai_label = get_used_ai_label(work_log_mgr, ai_provider)
 
     # Send initial response with dynamic AI label
     initial_message = await client.chat_postMessage(
         channel=REPORT_CHANNEL_ID,
-        text=f"🚀 {user_mention}업무일지 AI 피드백 생성을 시작합니다.\n\n"
-             f"📅 날짜: {date}\n"
-             f"🤖 AI: {used_ai_label}\n"
-             f"🌶️ 맛: {flavor}\n\n"
-             f"⏳ 처리 중..."
+        text=build_initial_text(
+          user_mention=user_mention,
+          date=date,
+          ai_label=used_ai_label,
+          flavor_line=f"🌶️ 맛: {flavor}",
+        )
     )
 
     message_ts = initial_message.get("ts")
@@ -156,20 +153,20 @@ async def handle_work_log_webhook_message(
       # Progress update function (reflects fallback provider if it occurs)
       async def update_progress(status: str):
         try:
-          used_ai = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+          used_ai = get_used_ai_label(work_log_mgr, ai_provider)
           await client.chat_update(
               channel=REPORT_CHANNEL_ID,
               ts=message_ts,
-              text=(
-                f"🚀 {user_mention}업무일지 AI 피드백 생성 중...\n\n"
-                f"📅 날짜: {date}\n"
-                f"🤖 AI: {used_ai}\n"
-                f"🌶️ 맛: {flavor}\n\n"
-                f"{status}"
+              text=build_progress_text(
+                user_mention=user_mention,
+                date=date,
+                ai_label=used_ai,
+                flavor_line=f"🌶️ 맛: {flavor}",
+                status=status,
               )
           )
         except Exception as e:
-          logger.warning(f"⚠️ Failed to update progress: {e}")
+          logger.warning(f"⚠️ 진행 상태 업데이트 실패: {e}")
       result = await work_log_mgr.process_feedback(
           date=date,
           database_id=database_id,

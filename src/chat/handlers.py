@@ -11,6 +11,13 @@ import pytz
 from ..commands.work_log_webhook_handler import handle_work_log_webhook_message
 from ..notion.wake_up import get_wake_up_manager
 from ..notion.work_log_agent import get_work_log_manager
+from ..common.slack_utils import (
+  build_initial_text,
+  build_progress_text,
+  flavor_emoji,
+  flavor_label,
+  get_used_ai_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -169,58 +176,51 @@ def register_chat_handlers(app):
       # Send work log feedback messages to the report channel
       channel_id = REPORT_CHANNEL_ID
 
-      # Flavor emoji mapping
-      flavor_emoji = {
-        "spicy": "🔥",
-        "normal": "🌶️",
-        "mild": "🍀"
-      }
-      flavor_name = {
-        "spicy": "매운맛",
-        "normal": "보통맛",
-        "mild": "순한맛"
-      }
-
       try:
         # Get work log manager upfront so initial AI label can reflect dynamic provider later
         work_log_mgr = get_work_log_manager(ai_provider_type=ai_provider)
-        used_ai_label = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+        used_ai_label = get_used_ai_label(work_log_mgr, ai_provider)
 
         # Send initial progress message with dynamic AI label
         progress_msg = await client.chat_postMessage(
             channel=channel_id,
-            text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
-                 f"📅 날짜: {selected_date}\n"
-                 f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-                 f"🤖 AI: {used_ai_label}\n"
-                 f"⏳ 상태: 업무일지 검색 중..."
+            text=build_initial_text(
+              user_mention=f"<@{user_id}>님의 ",
+              date=selected_date,
+              ai_label=used_ai_label,
+              flavor_line=f"{flavor_emoji(feedback_flavor)} 피드백: {flavor_label(feedback_flavor)}",
+            )
         )
 
         msg_ts = progress_msg["ts"]
 
         # Update: Finding work log
-        used_ai_now = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+        used_ai_now = get_used_ai_label(work_log_mgr, ai_provider)
         await client.chat_update(
             channel=channel_id,
             ts=msg_ts,
-            text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
-                 f"📅 날짜: {selected_date}\n"
-                 f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-                 f"🤖 AI: {used_ai_now}\n"
-                 f"⏳ 상태: 업무일지 확인 중..."
+            text=build_progress_text(
+              user_mention=f"<@{user_id}>님의 ",
+              date=selected_date,
+              ai_label=used_ai_now,
+              flavor_line=f"{flavor_emoji(feedback_flavor)} 피드백: {flavor_label(feedback_flavor)}",
+              status="업무일지 확인 중...",
+            )
         )
 
         # Progress updater that reflects fallback provider if it occurs
         async def progress_update(status: str):
-          used_ai_dyn = (getattr(work_log_mgr, 'last_used_ai_provider', None) or ai_provider).upper()
+          used_ai_dyn = get_used_ai_label(work_log_mgr, ai_provider)
           return await client.chat_update(
               channel=channel_id,
               ts=msg_ts,
-              text=f"<@{user_id}>님의 업무일지 피드백을 생성중입니다...\n\n"
-                   f"📅 날짜: {selected_date}\n"
-                   f"{flavor_emoji.get(feedback_flavor, '🌶️')} 피드백: {flavor_name.get(feedback_flavor, '보통맛')}\n"
-                   f"🤖 AI: {used_ai_dyn}\n"
-                   f"⏳ 상태: {status}"
+              text=build_progress_text(
+                user_mention=f"<@{user_id}>님의 ",
+                date=selected_date,
+                ai_label=used_ai_dyn,
+                flavor_line=f"{flavor_emoji(feedback_flavor)} 피드백: {flavor_label(feedback_flavor)}",
+                status=status,
+              )
           )
 
         # Process feedback with progress updates
