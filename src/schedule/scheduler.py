@@ -50,12 +50,12 @@ class MorningScheduler:
         replace_existing=True
     )
 
-    # 매주 금요일 오후 6시: 주간 리포트 자동 생성
+    # 매주 금요일 오후 10시: 주간 리포트 자동 생성
     self.scheduler.add_job(
         self.generate_weekly_reports,
         trigger=CronTrigger(
             day_of_week='fri',
-            hour=18,
+            hour=22,
             minute=0,
             timezone=KST
         ),
@@ -64,12 +64,12 @@ class MorningScheduler:
         replace_existing=True
     )
 
-    # 매월 마지막 날 오후 6시: 월간 리포트 자동 생성
+    # 매월 1일 오후 10시: 월간 리포트 자동 생성
     self.scheduler.add_job(
         self.generate_monthly_reports,
         trigger=CronTrigger(
-            day='last',
-            hour=18,
+            day='1',
+            hour=22,
             minute=0,
             timezone=KST
         ),
@@ -80,8 +80,8 @@ class MorningScheduler:
 
     logger.info("✅ 스케줄 등록 완료")
     logger.info("  - 아침 기상 메시지: 매일 6:30 AM")
-    logger.info("  - 주간 리포트: 매주 금요일 6:00 PM")
-    logger.info("  - 월간 리포트: 매월 마지막 날 6:00 PM")
+    logger.info("  - 주간 리포트: 매주 금요일 10:00 PM")
+    logger.info("  - 월간 리포트: 매월 1일 10:00 PM")
 
   def start(self):
     """스케줄러 시작"""
