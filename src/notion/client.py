@@ -20,8 +20,9 @@ class NotionClient:
 
     self.client = AsyncClient(auth=self.api_key)
 
-    # 데이터베이스 ID
+    # 데이터베이스 ID (기본값, 유저별로 오버라이드 가능)
     self.wake_up_database_id = os.getenv("NOTION_WAKE_UP_DATABASE_ID")
+    self.resume_content_database_id = os.getenv("NOTION_RESUME_CONTENT_DB_ID")
 
     logger.info("✅ Notion 클라이언트 초기화 완료")
 
@@ -45,12 +46,30 @@ class NotionClient:
       raise ValueError("데이터베이스 ID가 제공되지 않았습니다")
 
     try:
-      query_params = {"database_id": db_id}
+      # Build request body
+      request_body = {}
       if filter_params:
-        query_params["filter"] = filter_params
+        request_body["filter"] = filter_params
 
-      response = await self.client.databases.query(**query_params)
-      results = response.get("results", [])
+      # Use the correct API: POST /v1/databases/{database_id}/query
+      import httpx
+      headers = {
+        "Authorization": f"Bearer {self.api_key}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json"
+      }
+
+      async with httpx.AsyncClient() as http_client:
+        response = await http_client.post(
+            f"https://api.notion.com/v1/databases/{db_id}/query",
+            headers=headers,
+            json=request_body,
+            timeout=30.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+      results = data.get("results", [])
       logger.info(f"📊 데이터베이스 조회 완료: {len(results)}개 결과")
       return results
     except Exception as e:
@@ -182,4 +201,128 @@ class NotionClient:
       return response
     except Exception as e:
       logger.error(f"❌ 데이터베이스 조회 실패: {e}")
+      raise
+
+  # ===== Weekly/Monthly Report Helper Methods =====
+
+  async def query_work_logs_by_date_range(
+      self,
+      database_id: str,
+      start_date: str,
+      end_date: str
+  ) -> List[Dict[str, Any]]:
+    """
+    날짜 범위로 업무일지 조회
+
+    Args:
+        database_id: 업무일지 데이터베이스 ID
+        start_date: 시작 날짜 (YYYY-MM-DD)
+        end_date: 종료 날짜 (YYYY-MM-DD)
+
+    Returns:
+        업무일지 페이지 목록
+    """
+    try:
+      filter_params = {
+        "and": [
+          {
+            "property": "작성일",
+            "date": {"on_or_after": start_date}
+          },
+          {
+            "property": "작성일",
+            "date": {"on_or_before": end_date}
+          }
+        ]
+      }
+
+      results = await self.query_database(
+          database_id=database_id,
+          filter_params=filter_params
+      )
+
+      logger.info(
+          f"📅 업무일지 조회 완료: {start_date} ~ {end_date} ({len(results)}개)")
+      return results
+
+    except Exception as e:
+      logger.error(f"❌ 업무일지 조회 실패: {e}")
+      raise
+
+  async def query_weekly_reports_by_month(
+      self,
+      database_id: str,
+      year: int,
+      month: int
+  ) -> List[Dict[str, Any]]:
+    """
+    월별로 주간 리포트 조회
+
+    Args:
+        database_id: 주간 리포트 데이터베이스 ID
+        year: 연도
+        month: 월 (1-12)
+
+    Returns:
+        주간 리포트 페이지 목록
+    """
+    try:
+      # 월의 첫날과 마지막날 계산
+      from calendar import monthrange
+      last_day = monthrange(year, month)[1]
+      start_date = f"{year}-{month:02d}-01"
+      end_date = f"{year}-{month:02d}-{last_day}"
+
+      filter_params = {
+        "and": [
+          {
+            "property": "시작일",
+            "date": {"on_or_after": start_date}
+          },
+          {
+            "property": "시작일",
+            "date": {"on_or_before": end_date}
+          }
+        ]
+      }
+
+      results = await self.query_database(
+          database_id=database_id,
+          filter_params=filter_params
+      )
+
+      logger.info(f"📅 주간 리포트 조회 완료: {year}-{month:02d} ({len(results)}개)")
+      return results
+
+    except Exception as e:
+      logger.error(f"❌ 주간 리포트 조회 실패: {e}")
+      raise
+
+  async def create_relation(
+      self,
+      page_id: str,
+      property_name: str,
+      target_page_ids: List[str]
+  ):
+    """
+    페이지 간 Relation 생성
+
+    Args:
+        page_id: 소스 페이지 ID
+        property_name: Relation 속성 이름
+        target_page_ids: 연결할 페이지 ID 목록
+    """
+    try:
+      properties = {
+        property_name: {
+          "relation": [{"id": target_id} for target_id in target_page_ids]
+        }
+      }
+
+      await self.update_page(page_id, properties)
+      logger.info(
+          f"🔗 Relation 생성 완료: {page_id} -> {len(target_page_ids)}개 연결")
+
+    except Exception as e:
+      logger.error(f"❌ Relation 생성 실패: {e}")
       raise

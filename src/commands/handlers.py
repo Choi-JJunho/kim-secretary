@@ -1,9 +1,15 @@
 """Slash command handlers"""
 
+import json
 import logging
 from datetime import datetime
 
+import pytz
+
 logger = logging.getLogger(__name__)
+
+# KST timezone
+KST = pytz.timezone('Asia/Seoul')
 
 
 def register_slash_commands(app):
@@ -177,9 +183,9 @@ def register_slash_commands(app):
               "initial_option": {
                 "text": {
                   "type": "plain_text",
-                  "text": "Gemini"
+                  "text": "Claude Code CLI"
                 },
-                "value": "gemini"
+                "value": "claude"
               },
               "options": [
                 {
@@ -228,6 +234,300 @@ def register_slash_commands(app):
       # Acknowledge after modal is opened
       await ack()
       logger.info("✅ Work log feedback modal opened")
+
+    except Exception as e:
+      logger.error(f"❌ Failed to open modal: {e}")
+      await ack(text=f"❌ 모달 열기 실패: {str(e)}")
+
+  @app.command("/주간리포트")
+  async def handle_weekly_report_command(ack, body, client):
+    """Handle /주간리포트 command - Open modal for week selection"""
+    try:
+      logger.info("📅 Weekly report command triggered")
+
+      # Get current week
+      now = datetime.now(KST)
+      current_year = now.year
+      current_week = now.isocalendar()[1]
+
+      # Store metadata
+      private_metadata = json.dumps({
+        "channel_id": body.get("channel_id"),
+        "user_id": body.get("user_id")
+      })
+
+      # Open modal for week selection
+      modal_view = {
+        "type": "modal",
+        "callback_id": "weekly_report_modal",
+        "private_metadata": private_metadata,
+        "title": {
+          "type": "plain_text",
+          "text": "주간 리포트 생성"
+        },
+        "submit": {
+          "type": "plain_text",
+          "text": "리포트 생성"
+        },
+        "close": {
+          "type": "plain_text",
+          "text": "취소"
+        },
+        "blocks": [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "주간 리포트를 생성할 주차를 선택하세요."
+            }
+          },
+          {
+            "type": "input",
+            "block_id": "year_block",
+            "element": {
+              "type": "number_input",
+              "action_id": "report_year",
+              "is_decimal_allowed": False,
+              "initial_value": str(current_year),
+              "min_value": str(current_year - 1),
+              "max_value": str(current_year + 1),
+              "placeholder": {
+                "type": "plain_text",
+                "text": "연도 입력"
+              }
+            },
+            "label": {
+              "type": "plain_text",
+              "text": "연도"
+            }
+          },
+          {
+            "type": "input",
+            "block_id": "week_block",
+            "element": {
+              "type": "number_input",
+              "action_id": "report_week",
+              "is_decimal_allowed": False,
+              "initial_value": str(current_week),
+              "min_value": "1",
+              "max_value": "53",
+              "placeholder": {
+                "type": "plain_text",
+                "text": "주차 입력 (1-53)"
+              }
+            },
+            "label": {
+              "type": "plain_text",
+              "text": "주차 (ISO Week)"
+            },
+            "hint": {
+              "type": "plain_text",
+              "text": f"현재 주차: {current_week}"
+            }
+          },
+          {
+            "type": "input",
+            "block_id": "ai_provider_block",
+            "element": {
+              "type": "static_select",
+              "action_id": "ai_provider",
+              "placeholder": {
+                "type": "plain_text",
+                "text": "AI 모델 선택"
+              },
+              "initial_option": {
+                "text": {
+                  "type": "plain_text",
+                  "text": "Claude Code CLI"
+                },
+                "value": "claude"
+              },
+              "options": [
+                {
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Gemini"
+                  },
+                  "value": "gemini"
+                },
+                {
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Claude Code CLI"
+                  },
+                  "value": "claude"
+                },
+                {
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Ollama"
+                  },
+                  "value": "ollama"
+                }
+              ]
+            },
+            "label": {
+              "type": "plain_text",
+              "text": "AI 모델"
+            }
+          }
+        ]
+      }
+
+      await client.views_open(
+          trigger_id=body["trigger_id"],
+          view=modal_view
+      )
+
+      await ack()
+      logger.info("✅ Weekly report modal opened")
+
+    except Exception as e:
+      logger.error(f"❌ Failed to open modal: {e}")
+      await ack(text=f"❌ 모달 열기 실패: {str(e)}")
+
+  @app.command("/월간리포트")
+  async def handle_monthly_report_command(ack, body, client):
+    """Handle /월간리포트 command - Open modal for month selection"""
+    try:
+      logger.info("📅 Monthly report command triggered")
+
+      # Get current month
+      now = datetime.now(KST)
+      current_year = now.year
+      current_month = now.month
+
+      # Store metadata
+      private_metadata = json.dumps({
+        "channel_id": body.get("channel_id"),
+        "user_id": body.get("user_id")
+      })
+
+      # Open modal for month selection
+      modal_view = {
+        "type": "modal",
+        "callback_id": "monthly_report_modal",
+        "private_metadata": private_metadata,
+        "title": {
+          "type": "plain_text",
+          "text": "월간 리포트 생성"
+        },
+        "submit": {
+          "type": "plain_text",
+          "text": "리포트 생성"
+        },
+        "close": {
+          "type": "plain_text",
+          "text": "취소"
+        },
+        "blocks": [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "월간 리포트를 생성할 연월을 선택하세요."
+            }
+          },
+          {
+            "type": "input",
+            "block_id": "year_block",
+            "element": {
+              "type": "number_input",
+              "action_id": "report_year",
+              "is_decimal_allowed": False,
+              "initial_value": str(current_year),
+              "min_value": str(current_year - 1),
+              "max_value": str(current_year + 1),
+              "placeholder": {
+                "type": "plain_text",
+                "text": "연도 입력"
+              }
+            },
+            "label": {
+              "type": "plain_text",
+              "text": "연도"
+            }
+          },
+          {
+            "type": "input",
+            "block_id": "month_block",
+            "element": {
+              "type": "number_input",
+              "action_id": "report_month",
+              "is_decimal_allowed": False,
+              "initial_value": str(current_month),
+              "min_value": "1",
+              "max_value": "12",
+              "placeholder": {
+                "type": "plain_text",
+                "text": "월 입력 (1-12)"
+              }
+            },
+            "label": {
+              "type": "plain_text",
+              "text": "월"
+            },
+            "hint": {
+              "type": "plain_text",
+              "text": f"현재 월: {current_month}"
+            }
+          },
+          {
+            "type": "input",
+            "block_id": "ai_provider_block",
+            "element": {
+              "type": "static_select",
+              "action_id": "ai_provider",
+              "placeholder": {
+                "type": "plain_text",
+                "text": "AI 모델 선택"
+              },
+              "initial_option": {
+                "text": {
+                  "type": "plain_text",
+                  "text": "Claude Code CLI"
+                },
+                "value": "claude"
+              },
+              "options": [
+                {
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Gemini"
+                  },
+                  "value": "gemini"
+                },
+                {
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Claude Code CLI"
+                  },
+                  "value": "claude"
+                },
+                {
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Ollama"
+                  },
+                  "value": "ollama"
+                }
+              ]
+            },
+            "label": {
+              "type": "plain_text",
+              "text": "AI 모델"
+            }
+          }
+        ]
+      }
+
+      await client.views_open(
+          trigger_id=body["trigger_id"],
+          view=modal_view
+      )
+
+      await ack()
+      logger.info("✅ Monthly report modal opened")
 
     except Exception as e:
       logger.error(f"❌ Failed to open modal: {e}")

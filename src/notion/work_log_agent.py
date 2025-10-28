@@ -77,7 +77,7 @@ class WorkLogManager:
   def __init__(
       self,
       client: Optional[NotionClient] = None,
-      ai_provider_type: str = "gemini"
+      ai_provider_type: str = "claude"
   ):
     """
     Initialize WorkLogManager
@@ -377,7 +377,7 @@ class WorkLogManager:
 _work_log_manager = None
 
 
-def get_work_log_manager(ai_provider_type: str = "gemini") -> WorkLogManager:
+def get_work_log_manager(ai_provider_type: str = "claude") -> WorkLogManager:
   """
   Get or create singleton WorkLogManager instance
 

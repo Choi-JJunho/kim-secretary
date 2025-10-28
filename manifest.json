@@ -24,6 +24,11 @@
                 "command": "/기상테스트",
                 "description": "아침 기상 메시지를 테스트합니다",
                 "should_escape": false
+            },
+            {
+                "command": "/업무일지피드백",
+                "description": "업무일지를 AI가 피드백해줍니다.",
+                "should_escape": false
             }
         ]
     },
@@ -79,7 +84,8 @@
             ]
         },
         "interactivity": {
-            "is_enabled": true
+            "is_enabled": true,
+            "request_url": "https://b0e016ba6e28.ngrok-free.app/slack/interactions"
         },
         "org_deploy_enabled": false,
         "socket_mode_enabled": true,

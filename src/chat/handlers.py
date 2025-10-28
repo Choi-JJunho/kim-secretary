@@ -11,6 +11,7 @@ import pytz
 from ..commands.work_log_webhook_handler import handle_work_log_webhook_message
 from ..notion.wake_up import get_wake_up_manager
 from ..notion.work_log_agent import get_work_log_manager
+from ..notion.weekly_report_agent import get_weekly_report_manager
 from ..common.slack_utils import (
   build_initial_text,
   build_progress_text,
@@ -145,15 +146,16 @@ def register_chat_handlers(app):
 
       user_id = body["user"]["id"]
 
-      # Get database_id from user mapping
-      database_mapping_str = os.getenv("NOTION_WORK_DATABASE_MAPPING", "{}")
+      # Get database_id from unified user mapping
+      user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
       try:
-        database_mapping = json.loads(database_mapping_str)
+        user_db_mapping = json.loads(user_db_mapping_str)
       except json.JSONDecodeError:
-        logger.error(f"❌ Failed to parse NOTION_WORK_DATABASE_MAPPING")
-        database_mapping = {}
+        logger.error(f"❌ Failed to parse NOTION_USER_DATABASE_MAPPING")
+        user_db_mapping = {}
 
-      database_id = database_mapping.get(user_id)
+      user_dbs = user_db_mapping.get(user_id, {})
+      database_id = user_dbs.get("work_log_db")
 
       if not database_id:
         logger.error(f"❌ No database mapping found for user: {user_id}")
@@ -315,4 +317,366 @@ def register_chat_handlers(app):
       await ack(
           response_action="errors",
           errors={"date_block": "처리 중 오류가 발생했습니다. 다시 시도해주세요."}
+      )
+
+  @app.view("weekly_report_modal")
+  async def handle_weekly_report_submission(ack, body, client, view, logger):
+    """Handle weekly report modal submission"""
+
+    try:
+      # Extract form values
+      values = view["state"]["values"]
+
+      year = int(values["year_block"]["report_year"]["value"])
+      week = int(values["week_block"]["report_week"]["value"])
+      ai_provider = values["ai_provider_block"]["ai_provider"]["selected_option"]["value"]
+
+      user_id = body["user"]["id"]
+
+      # Get database mappings from unified user mapping
+      user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
+      try:
+        user_db_mapping = json.loads(user_db_mapping_str)
+      except json.JSONDecodeError:
+        logger.error(f"❌ Failed to parse NOTION_USER_DATABASE_MAPPING")
+        user_db_mapping = {}
+
+      user_dbs = user_db_mapping.get(user_id, {})
+
+      if not user_dbs:
+        logger.error(f"❌ No database mapping found for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 데이터베이스 매핑을 찾을 수 없습니다.\n"
+                 f"관리자에게 문의하세요. (User ID: {user_id})"
+        )
+        return
+
+      work_log_db_id = user_dbs.get("work_log_db")
+      weekly_report_db_id = user_dbs.get("weekly_report_db")
+
+      if not work_log_db_id or not weekly_report_db_id:
+        logger.error(f"❌ Incomplete database mapping for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 데이터베이스 설정이 불완전합니다.\n"
+                 f"관리자에게 문의하세요."
+        )
+        return
+
+      logger.info(
+          f"📅 Processing weekly report: year={year}, week={week}, "
+          f"ai={ai_provider}, user={user_id}"
+      )
+
+      # Acknowledge modal submission immediately
+      await ack()
+
+      # Send to report channel
+      channel_id = REPORT_CHANNEL_ID
+
+      try:
+        # Get weekly report manager
+        weekly_mgr = get_weekly_report_manager(ai_provider_type=ai_provider)
+
+        # Send initial progress message
+        progress_msg = await client.chat_postMessage(
+            channel=channel_id,
+            text=f"<@{user_id}>님의 주간 리포트 생성 중... 📅\n\n"
+                 f"📆 기간: {year}-W{week:02d}\n"
+                 f"🤖 AI: {ai_provider.upper()}\n"
+                 f"⏳ 진행 중..."
+        )
+
+        msg_ts = progress_msg["ts"]
+
+        # Progress updater
+        async def progress_update(status: str):
+          used_ai_label = (weekly_mgr.last_used_ai_provider or ai_provider).upper()
+          return await client.chat_update(
+              channel=channel_id,
+              ts=msg_ts,
+              text=f"<@{user_id}>님의 주간 리포트 생성 중... 📅\n\n"
+                   f"📆 기간: {year}-W{week:02d}\n"
+                   f"🤖 AI: {used_ai_label}\n"
+                   f"⏳ {status}"
+          )
+
+        # Generate weekly report with progress updates
+        result = await weekly_mgr.generate_weekly_report(
+            year=year,
+            week=week,
+            work_log_database_id=work_log_db_id,
+            weekly_report_database_id=weekly_report_db_id,
+            progress_callback=progress_update
+        )
+
+        # Update with final success message
+        used_ai = result.get('used_ai_provider', ai_provider).upper()
+        daily_logs_count = result.get('daily_logs_count', 0)
+        page_url = result.get('page_url', '')
+
+        success_text = (
+          f"<@{user_id}>님의 주간 리포트 생성 완료! ✅\n\n"
+          f"📆 기간: {year}-W{week:02d}\n"
+          f"🤖 AI: {used_ai}\n"
+          f"📊 분석한 업무일지: {daily_logs_count}개\n\n"
+          f"✨ Notion에서 확인하세요!"
+        )
+
+        if page_url:
+          success_text += f"\n🔗 <{page_url}|리포트 바로가기>"
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=success_text
+        )
+
+        # Post summary in thread
+        try:
+          analysis = result.get('analysis', {})
+          if analysis:
+            summary = analysis.get('summary', '')
+            achievements = analysis.get('achievements', [])
+            tech_stack = analysis.get('tech_stack', [])
+
+            thread_text = f"🧵 주간 리포트 요약\n\n"
+
+            if summary:
+              thread_text += f"**📝 요약**\n{summary}\n\n"
+
+            if achievements:
+              thread_text += f"**🎯 주요 성과** ({len(achievements)}개)\n"
+              for i, ach in enumerate(achievements[:3], 1):  # 처음 3개만
+                thread_text += f"{i}. {ach[:200]}...\n\n"
+
+            if tech_stack:
+              thread_text += f"**💻 사용 기술**\n{', '.join(tech_stack)}"
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=msg_ts,
+                text=thread_text
+            )
+        except Exception as e:
+          logger.warning(f"⚠️ 스레드에 요약 게시 실패: {e}")
+
+        logger.info(f"✅ Weekly report completed: {year}-W{week:02d}")
+
+      except ValueError as ve:
+        # Handle validation errors
+        error_text = (
+          f"<@{user_id}>님의 주간 리포트 생성 실패 ⚠️\n\n"
+          f"📆 기간: {year}-W{week:02d}\n"
+          f"❌ 오류: {str(ve)}"
+        )
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=error_text
+        )
+        logger.warning(f"⚠️ Validation error: {ve}")
+
+      except Exception as e:
+        # Handle other errors
+        error_text = (
+          f"<@{user_id}>님의 주간 리포트 생성 실패 ❌\n\n"
+          f"📆 기간: {year}-W{week:02d}\n"
+          f"🤖 AI: {ai_provider.upper()}\n"
+          f"❌ 오류: {str(e)}\n\n"
+          f"로그를 확인하거나 다시 시도해주세요."
+        )
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=error_text
+        )
+
+        logger.error(f"❌ Failed to generate weekly report: {e}", exc_info=True)
+
+    except Exception as e:
+      logger.error(f"❌ Modal submission handler failed: {e}", exc_info=True)
+      await ack(
+          response_action="errors",
+          errors={"year_block": "처리 중 오류가 발생했습니다. 다시 시도해주세요."}
+      )
+
+  @app.view("monthly_report_modal")
+  async def handle_monthly_report_submission(ack, body, client, view, logger):
+    """Handle monthly report modal submission"""
+    try:
+      logger.info("📝 Monthly report modal submitted")
+
+      # Extract form values
+      values = view["state"]["values"]
+      year = int(values["year_block"]["report_year"]["value"])
+      month = int(values["month_block"]["report_month"]["value"])
+      ai_provider = values["ai_provider_block"]["ai_provider"]["selected_option"]["value"]
+
+      user_id = body["user"]["id"]
+
+      # Get database mappings from unified user mapping
+      user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
+      try:
+        user_db_mapping = json.loads(user_db_mapping_str)
+      except json.JSONDecodeError:
+        logger.error(f"❌ Failed to parse NOTION_USER_DATABASE_MAPPING")
+        user_db_mapping = {}
+
+      user_dbs = user_db_mapping.get(user_id, {})
+
+      if not user_dbs:
+        logger.error(f"❌ No database mapping found for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 데이터베이스 매핑을 찾을 수 없습니다.\n"
+                 f"관리자에게 문의하세요. (User ID: {user_id})"
+        )
+        return
+
+      weekly_report_db_id = user_dbs.get("weekly_report_db")
+      monthly_report_db_id = user_dbs.get("monthly_report_db")
+
+      if not weekly_report_db_id or not monthly_report_db_id:
+        logger.error(f"❌ Incomplete database mapping for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 데이터베이스 설정이 불완전합니다.\n"
+                 f"주간/월간 리포트 DB를 모두 설정해주세요."
+        )
+        return
+
+      logger.info(
+          f"✅ Database mapping found: weekly={weekly_report_db_id}, monthly={monthly_report_db_id}")
+
+      # Acknowledge modal
+      await ack()
+
+      # Get channel from private_metadata
+      private_metadata = json.loads(view.get("private_metadata", "{}"))
+      channel_id = private_metadata.get(
+          "channel_id") or body.get("channel_id") or REPORT_CHANNEL_ID
+
+      # Post initial message
+      msg_response = await client.chat_postMessage(
+          channel=channel_id,
+          text=f"📅 {year}년 {month}월 월간 리포트 생성을 시작합니다... (AI: {ai_provider.upper()})"
+      )
+      msg_ts = msg_response["ts"]
+
+      # Progress callback
+      async def progress_callback(status: str):
+        try:
+          await client.chat_update(
+              channel=channel_id,
+              ts=msg_ts,
+              text=status
+          )
+        except Exception as e:
+          logger.warning(f"⚠️ Failed to update progress: {e}")
+
+      # Generate monthly report
+      from ..notion.monthly_report_agent import get_monthly_report_manager
+
+      try:
+        monthly_mgr = get_monthly_report_manager(ai_provider_type=ai_provider)
+        result = await monthly_mgr.generate_monthly_report(
+            year=year,
+            month=month,
+            weekly_report_database_id=weekly_report_db_id,
+            monthly_report_database_id=monthly_report_db_id,
+            progress_callback=progress_callback
+        )
+
+        # Update message with success
+        page_url = result.get('page_url', '')
+        used_provider = result.get('used_ai_provider', ai_provider).upper()
+        weekly_count = result.get('weekly_reports_count', 0)
+
+        success_text = (
+            f"✅ {year}년 {month}월 월간 리포트 생성 완료!\n\n"
+            f"🤖 AI: {used_provider}\n"
+            f"📊 분석한 주간 리포트: {weekly_count}개"
+        )
+
+        if page_url:
+          success_text += f"\n🔗 <{page_url}|리포트 바로가기>"
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=success_text
+        )
+
+        # Post summary in thread
+        try:
+          analysis = result.get('analysis', {})
+          if analysis:
+            summary = analysis.get('summary', '')
+            key_achievements = analysis.get('key_achievements', [])
+            next_goals = analysis.get('next_goals', '')
+
+            thread_text = f"🧵 월간 리포트 요약\n\n"
+
+            if summary:
+              thread_text += f"**📝 월간 요약**\n{summary}\n\n"
+
+            if key_achievements:
+              thread_text += f"**🎯 핵심 성과 ({len(key_achievements)}개)**\n"
+              for idx, ach in enumerate(key_achievements[:3], 1):
+                thread_text += f"{idx}. {ach[:150]}...\n"
+              thread_text += "\n"
+
+            if next_goals:
+              goals_lines = [line.strip() for line in next_goals.split(
+                  '\n') if line.strip()][:3]
+              thread_text += f"**🎯 다음 달 목표**\n"
+              for goal in goals_lines:
+                if goal.startswith('-'):
+                  thread_text += f"{goal}\n"
+                else:
+                  thread_text += f"- {goal}\n"
+
+            thread_text += f"\n자세한 내용은 <{page_url}|Notion 페이지>에서 확인하세요!"
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=msg_ts,
+                text=thread_text
+            )
+
+        except Exception as e:
+          logger.warning(f"⚠️ Failed to post thread summary: {e}")
+
+        logger.info(
+            f"✅ Monthly report generated successfully: {year}-{month:02d}")
+
+      except Exception as e:
+        error_text = (
+          f"❌ 월간 리포트 생성 실패\n\n"
+          f"📅 기간: {year}년 {month}월\n"
+          f"❌ 오류: {str(e)}\n\n"
+          f"로그를 확인하거나 다시 시도해주세요."
+        )
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=error_text
+        )
+
+        logger.error(f"❌ Failed to generate monthly report: {e}", exc_info=True)
+
+    except Exception as e:
+      logger.error(f"❌ Modal submission handler failed: {e}", exc_info=True)
+      await ack(
+          response_action="errors",
+          errors={"year_block": "처리 중 오류가 발생했습니다. 다시 시도해주세요."}
       )
