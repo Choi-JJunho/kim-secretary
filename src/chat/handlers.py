@@ -435,26 +435,18 @@ def register_chat_handlers(app):
             text=success_text
         )
 
-        # Post summary in thread
+        # Post analysis preview in thread
         try:
-          analysis = result.get('analysis', {})
-          if analysis:
-            summary = analysis.get('summary', '')
-            achievements = analysis.get('achievements', [])
-            tech_stack = analysis.get('tech_stack', [])
+          analysis = result.get('analysis', '')
+          if analysis and isinstance(analysis, str):
+            # 마크다운 텍스트의 미리보기 (처음 1000자)
+            preview_length = 1000
+            if len(analysis) > preview_length:
+              preview = analysis[:preview_length] + f"\n\n... (총 {len(analysis)}자)\n\n"
+            else:
+              preview = analysis
 
-            thread_text = f"🧵 주간 리포트 요약\n\n"
-
-            if summary:
-              thread_text += f"**📝 요약**\n{summary}\n\n"
-
-            if achievements:
-              thread_text += f"**🎯 주요 성과** ({len(achievements)}개)\n"
-              for i, ach in enumerate(achievements[:3], 1):  # 처음 3개만
-                thread_text += f"{i}. {ach[:200]}...\n\n"
-
-            if tech_stack:
-              thread_text += f"**💻 사용 기술**\n{', '.join(tech_stack)}"
+            thread_text = f"🧵 주간 리포트 미리보기\n\n{preview}\n자세한 내용은 Notion 페이지에서 확인하세요!"
 
             await client.chat_postMessage(
                 channel=channel_id,
@@ -462,7 +454,7 @@ def register_chat_handlers(app):
                 text=thread_text
             )
         except Exception as e:
-          logger.warning(f"⚠️ 스레드에 요약 게시 실패: {e}")
+          logger.warning(f"⚠️ 스레드에 미리보기 게시 실패: {e}")
 
         logger.info(f"✅ Weekly report completed: {year}-W{week:02d}")
 
@@ -615,36 +607,18 @@ def register_chat_handlers(app):
             text=success_text
         )
 
-        # Post summary in thread
+        # Post analysis preview in thread
         try:
-          analysis = result.get('analysis', {})
-          if analysis:
-            summary = analysis.get('summary', '')
-            key_achievements = analysis.get('key_achievements', [])
-            next_goals = analysis.get('next_goals', '')
+          analysis = result.get('analysis', '')
+          if analysis and isinstance(analysis, str):
+            # 마크다운 텍스트의 미리보기 (처음 1000자)
+            preview_length = 1000
+            if len(analysis) > preview_length:
+              preview = analysis[:preview_length] + f"\n\n... (총 {len(analysis)}자)\n\n"
+            else:
+              preview = analysis
 
-            thread_text = f"🧵 월간 리포트 요약\n\n"
-
-            if summary:
-              thread_text += f"**📝 월간 요약**\n{summary}\n\n"
-
-            if key_achievements:
-              thread_text += f"**🎯 핵심 성과 ({len(key_achievements)}개)**\n"
-              for idx, ach in enumerate(key_achievements[:3], 1):
-                thread_text += f"{idx}. {ach[:150]}...\n"
-              thread_text += "\n"
-
-            if next_goals:
-              goals_lines = [line.strip() for line in next_goals.split(
-                  '\n') if line.strip()][:3]
-              thread_text += f"**🎯 다음 달 목표**\n"
-              for goal in goals_lines:
-                if goal.startswith('-'):
-                  thread_text += f"{goal}\n"
-                else:
-                  thread_text += f"- {goal}\n"
-
-            thread_text += f"\n자세한 내용은 <{page_url}|Notion 페이지>에서 확인하세요!"
+            thread_text = f"🧵 월간 리포트 미리보기\n\n{preview}\n자세한 내용은 <{page_url}|Notion 페이지>에서 확인하세요!"
 
             await client.chat_postMessage(
                 channel=channel_id,
@@ -653,7 +627,7 @@ def register_chat_handlers(app):
             )
 
         except Exception as e:
-          logger.warning(f"⚠️ Failed to post thread summary: {e}")
+          logger.warning(f"⚠️ 스레드에 미리보기 게시 실패: {e}")
 
         logger.info(
             f"✅ Monthly report generated successfully: {year}-{month:02d}")
