@@ -1,4 +1,4 @@
-"""Wake-up tracking management using Notion API"""
+"""기상 관리 Notion 매니저"""
 
 import logging
 import os
@@ -128,7 +128,7 @@ class WakeUpManager:
 
 
 # Singleton instance
-_wake_up_manager = None
+_wake_up_manager: Optional[WakeUpManager] = None
 
 
 def get_wake_up_manager() -> WakeUpManager:

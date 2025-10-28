@@ -1,29 +1,13 @@
 """성과를 STAR 형식으로 변환"""
 
 import logging
-import os
 from typing import Dict, Optional
 
 from .. import ai
+from ..common.prompt_utils import load_prompt
+from ..common.singleton import SimpleSingleton
 
 logger = logging.getLogger(__name__)
-
-
-def _load_star_prompt() -> str:
-  """STAR 변환 프롬프트 템플릿 로드"""
-  prompt_file = os.path.join(
-      os.path.dirname(__file__),
-      "..",
-      "prompts",
-      "star_format_converter.txt"
-  )
-
-  try:
-    with open(prompt_file, "r", encoding="utf-8") as f:
-      return f.read()
-  except FileNotFoundError:
-    logger.warning(f"⚠️ Prompt file not found: {prompt_file}")
-    return ""
 
 
 class AchievementExtractor:
@@ -41,7 +25,7 @@ class AchievementExtractor:
     self.last_used_ai_provider: Optional[str] = None
 
     # Load prompt template
-    self.prompt_template = _load_star_prompt()
+    self.prompt_template = load_prompt("star_format_converter")
     logger.info(f"✅ AchievementExtractor initialized (AI: {ai_provider_type})")
 
   async def convert_to_star(
@@ -100,7 +84,7 @@ class AchievementExtractor:
 
 
 # Singleton instance
-_achievement_extractor = None
+_singleton = SimpleSingleton(AchievementExtractor, param_name="ai_provider_type")
 
 
 def get_achievement_extractor(ai_provider_type: str = "claude") -> AchievementExtractor:
@@ -113,8 +97,4 @@ def get_achievement_extractor(ai_provider_type: str = "claude") -> AchievementEx
   Returns:
       AchievementExtractor instance
   """
-  global _achievement_extractor
-  if _achievement_extractor is None or _achievement_extractor.ai_provider_type != ai_provider_type:
-    _achievement_extractor = AchievementExtractor(
-        ai_provider_type=ai_provider_type)
-  return _achievement_extractor
+  return _singleton.get(ai_provider_type=ai_provider_type)

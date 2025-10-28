@@ -1,5 +1,3 @@
-"""주간 리포트 생성 및 관리"""
-
 import logging
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional
@@ -12,6 +10,7 @@ from .db_schema import get_weekly_report_schema
 from ..analyzers import WeeklyAnalyzer
 from ..common.notion_blocks import build_ai_feedback_blocks, append_blocks_batched
 from ..common.types import ReportProcessResult
+from ..common.singleton import SimpleSingleton
 
 logger = logging.getLogger(__name__)
 
@@ -200,11 +199,12 @@ class WeeklyReportManager:
         await self.client.create_relation(
             page_id=page_id,
             property_name="일지목록",
-            target_page_ids=daily_log_ids
+            target_page_ids=daily_log_ids,
+            silent=True  # 선택적 Relation이므로 에러 로그 억제
         )
         logger.info("✅ 업무일지 Relation 연결 완료")
       except Exception as e:
-        logger.warning(f"⚠️ 업무일지 Relation 연결 실패 (선택사항): {e}")
+        logger.debug(f"ℹ️ 업무일지 Relation 연결 건너뜀 (선택사항): {e}")
         # Relation 연결 실패는 치명적이지 않으므로 계속 진행
 
       logger.info(f"✅ 주간 리포트 생성 완료: {year}-W{week:02d}")
@@ -227,12 +227,10 @@ class WeeklyReportManager:
 
 
 # Singleton instance
-_weekly_report_manager = None
+_singleton = SimpleSingleton(WeeklyReportManager, param_name="ai_provider_type")
 
 
-def get_weekly_report_manager(
-    ai_provider_type: str = "claude"
-) -> WeeklyReportManager:
+def get_weekly_report_manager(ai_provider_type: str = "claude") -> WeeklyReportManager:
   """
   Get or create singleton WeeklyReportManager instance
 
@@ -242,8 +240,4 @@ def get_weekly_report_manager(
   Returns:
       WeeklyReportManager instance
   """
-  global _weekly_report_manager
-  if _weekly_report_manager is None or _weekly_report_manager.ai_provider_type != ai_provider_type:
-    _weekly_report_manager = WeeklyReportManager(
-        ai_provider_type=ai_provider_type)
-  return _weekly_report_manager
+  return _singleton.get(ai_provider_type=ai_provider_type)

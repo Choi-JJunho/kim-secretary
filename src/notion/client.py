@@ -302,7 +302,8 @@ class NotionClient:
       self,
       page_id: str,
       property_name: str,
-      target_page_ids: List[str]
+      target_page_ids: List[str],
+      silent: bool = False
   ):
     """
     페이지 간 Relation 생성
@@ -311,6 +312,7 @@ class NotionClient:
         page_id: 소스 페이지 ID
         property_name: Relation 속성 이름
         target_page_ids: 연결할 페이지 ID 목록
+        silent: True일 경우 실패 시 에러 로그 억제 (선택적 Relation용)
     """
     try:
       properties = {
@@ -319,10 +321,12 @@ class NotionClient:
         }
       }
 
-      await self.update_page(page_id, properties)
+      # Notion API 직접 호출 (update_page 우회하여 중복 에러 로그 방지)
+      await self.client.pages.update(page_id=page_id, properties=properties)
       logger.info(
           f"🔗 Relation 생성 완료: {page_id} -> {len(target_page_ids)}개 연결")
 
     except Exception as e:
-      logger.error(f"❌ Relation 생성 실패: {e}")
+      if not silent:
+        logger.error(f"❌ Relation 생성 실패: {e}")
       raise

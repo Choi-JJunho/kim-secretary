@@ -1,7 +1,6 @@
 """Notion API와 AI를 활용한 업무일지 피드백 관리"""
 
 import logging
-import os
 from datetime import datetime
 from typing import Callable, Dict, Optional
 
@@ -9,66 +8,14 @@ import pytz
 
 from .client import NotionClient
 from .. import ai
+from ..common.prompt_utils import load_prompt
+from ..common.notion_utils import extract_page_content
+from ..common.singleton import SimpleSingleton
 
 logger = logging.getLogger(__name__)
 
 # KST timezone
 KST = pytz.timezone('Asia/Seoul')
-
-
-def _load_prompt_template(flavor: str = "normal") -> str:
-  """
-  Load work log feedback prompt template
-
-  Args:
-      flavor: Feedback flavor (spicy, normal, mild)
-
-  Returns:
-      Prompt template content
-  """
-  # Map flavor to filename
-  flavor_files = {
-    "spicy": "work_log_feedback_spicy.txt",
-    "normal": "work_log_feedback_normal.txt",
-    "mild": "work_log_feedback_mild.txt"
-  }
-
-  filename = flavor_files.get(flavor, "work_log_feedback_normal.txt")
-  prompt_file = os.path.join(
-      os.path.dirname(__file__),
-      "..",
-      "prompts",
-      filename
-  )
-
-  try:
-    with open(prompt_file, "r", encoding="utf-8") as f:
-      return f.read()
-  except FileNotFoundError:
-    logger.warning(f"⚠️ Prompt file not found: {prompt_file}, using default")
-    return "업무일지를 검토하고 피드백을 제공해주세요."
-
-
-def _load_notion_markdown_guide() -> str:
-  """
-  Load Notion markdown guide system prompt
-
-  Returns:
-      Notion markdown guide content
-  """
-  guide_file = os.path.join(
-      os.path.dirname(__file__),
-      "..",
-      "prompts",
-      "notion_markdown_guide.txt"
-  )
-
-  try:
-    with open(guide_file, "r", encoding="utf-8") as f:
-      return f.read()
-  except FileNotFoundError:
-    logger.warning(f"⚠️ Notion markdown guide not found: {guide_file}")
-    return ""
 
 
 class WorkLogManager:
@@ -91,8 +38,8 @@ class WorkLogManager:
     self.ai_provider = ai.get_ai_provider(ai_provider_type)
     self.last_used_ai_provider: Optional[str] = None
 
-    # Load prompt template
-    self.prompt_template = _load_prompt_template()
+    # Prompt template will be loaded based on flavor in process_feedback
+    self.prompt_template = ""
     logger.info(f"✅ WorkLogManager initialized (AI: {ai_provider_type})")
 
   async def find_work_log_by_date(
@@ -172,32 +119,9 @@ class WorkLogManager:
     Returns:
         Page content as text
     """
-    try:
-      # Get page blocks (content)
-      blocks_response = await self.client.client.blocks.children.list(
-          block_id=page_id
-      )
-      blocks = blocks_response.get("results", [])
-
-      # Extract text from blocks
-      content_parts = []
-      for block in blocks:
-        block_type = block.get("type")
-        block_content = block.get(block_type, {})
-
-        # Extract text based on block type
-        if "rich_text" in block_content:
-          for text_obj in block_content["rich_text"]:
-            if "text" in text_obj:
-              content_parts.append(text_obj["text"]["content"])
-
-      content = "\n".join(content_parts)
-      logger.info(f"📖 Extracted content: {len(content)} characters")
-      return content
-
-    except Exception as e:
-      logger.error(f"❌ Failed to get page content: {e}")
-      raise
+    content = await extract_page_content(self.client, page_id, format="text")
+    logger.info(f"📖 Extracted content: {len(content)} characters")
+    return content
 
   async def generate_feedback(self, work_log_content: str) -> str:
     """
@@ -213,7 +137,7 @@ class WorkLogManager:
       current_date = datetime.now(KST).strftime("%Y-%m-%d")
 
       # Load Notion markdown guide as system prompt
-      system_prompt = _load_notion_markdown_guide()
+      system_prompt = load_prompt("notion_markdown_guide")
 
       # Build full prompt
       prompt = f"{self.prompt_template}\n\n## 업무일지 내용\n\n{work_log_content}"
@@ -336,7 +260,13 @@ class WorkLogManager:
 
     # 4. Load prompt template for selected flavor
     await update_progress("🎨 피드백 프롬프트 준비 중...")
-    self.prompt_template = _load_prompt_template(flavor)
+    flavor_files = {
+      "spicy": "work_log_feedback_spicy",
+      "normal": "work_log_feedback_normal",
+      "mild": "work_log_feedback_mild"
+    }
+    prompt_name = flavor_files.get(flavor, "work_log_feedback_normal")
+    self.prompt_template = load_prompt(prompt_name, default="업무일지를 검토하고 피드백을 제공해주세요.")
 
     # 5. Generate AI feedback
     await update_progress(f"🤖 AI 피드백 생성 중... (내용 길이: {len(content)}자)")
@@ -374,7 +304,7 @@ class WorkLogManager:
 
 
 # Singleton instance
-_work_log_manager = None
+_singleton = SimpleSingleton(WorkLogManager, param_name="ai_provider_type")
 
 
 def get_work_log_manager(ai_provider_type: str = "claude") -> WorkLogManager:
@@ -387,7 +317,4 @@ def get_work_log_manager(ai_provider_type: str = "claude") -> WorkLogManager:
   Returns:
       WorkLogManager instance
   """
-  global _work_log_manager
-  if _work_log_manager is None:
-    _work_log_manager = WorkLogManager(ai_provider_type=ai_provider_type)
-  return _work_log_manager
+  return _singleton.get(ai_provider_type=ai_provider_type)

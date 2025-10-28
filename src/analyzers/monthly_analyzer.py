@@ -1,10 +1,12 @@
 """월간 리포트 분석기"""
 
 import logging
-import os
 from typing import Dict, List, Optional
 
 from ..ai import generate_with_gemini_fallback
+from ..common.prompt_utils import load_prompt
+from ..common.notion_utils import extract_page_content
+from ..common.singleton import SimpleSingleton
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +25,7 @@ class MonthlyAnalyzer:
     self.last_used_ai_provider: Optional[str] = None
 
     # 프롬프트 로드
-    prompt_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "prompts",
-        "monthly_report_analysis.txt"
-    )
-    with open(prompt_path, "r", encoding="utf-8") as f:
-      self.prompt_template = f.read()
+    self.prompt_template = load_prompt("monthly_report_analysis")
 
     logger.info(f"✅ MonthlyAnalyzer initialized (AI: {ai_provider_type})")
 
@@ -162,53 +158,11 @@ class MonthlyAnalyzer:
     Returns:
         페이지 콘텐츠 (마크다운 형식)
     """
-    try:
-      blocks = await notion_client.client.blocks.children.list(block_id=page_id)
-      content_parts = []
-
-      for block in blocks.get("results", []):
-        block_type = block.get("type")
-
-        if block_type == "paragraph":
-          rich_text = block.get("paragraph", {}).get("rich_text", [])
-          text = "".join([t.get("plain_text", "") for t in rich_text])
-          if text.strip():
-            content_parts.append(text)
-
-        elif block_type == "heading_1":
-          rich_text = block.get("heading_1", {}).get("rich_text", [])
-          text = "".join([t.get("plain_text", "") for t in rich_text])
-          content_parts.append(f"# {text}")
-
-        elif block_type == "heading_2":
-          rich_text = block.get("heading_2", {}).get("rich_text", [])
-          text = "".join([t.get("plain_text", "") for t in rich_text])
-          content_parts.append(f"## {text}")
-
-        elif block_type == "heading_3":
-          rich_text = block.get("heading_3", {}).get("rich_text", [])
-          text = "".join([t.get("plain_text", "") for t in rich_text])
-          content_parts.append(f"### {text}")
-
-        elif block_type == "bulleted_list_item":
-          rich_text = block.get("bulleted_list_item", {}).get("rich_text", [])
-          text = "".join([t.get("plain_text", "") for t in rich_text])
-          content_parts.append(f"- {text}")
-
-        elif block_type == "numbered_list_item":
-          rich_text = block.get("numbered_list_item", {}).get("rich_text", [])
-          text = "".join([t.get("plain_text", "") for t in rich_text])
-          content_parts.append(f"1. {text}")
-
-      return "\n\n".join(content_parts)
-
-    except Exception as e:
-      logger.error(f"❌ 페이지 콘텐츠 가져오기 실패: {e}")
-      return ""
+    return await extract_page_content(notion_client, page_id, format="markdown")
 
 
 # Singleton instance
-_monthly_analyzer = None
+_singleton = SimpleSingleton(MonthlyAnalyzer, param_name="ai_provider_type")
 
 
 def get_monthly_analyzer(ai_provider_type: str = "claude") -> MonthlyAnalyzer:
@@ -221,7 +175,4 @@ def get_monthly_analyzer(ai_provider_type: str = "claude") -> MonthlyAnalyzer:
   Returns:
       MonthlyAnalyzer instance
   """
-  global _monthly_analyzer
-  if _monthly_analyzer is None or _monthly_analyzer.ai_provider_type != ai_provider_type:
-    _monthly_analyzer = MonthlyAnalyzer(ai_provider_type=ai_provider_type)
-  return _monthly_analyzer
+  return _singleton.get(ai_provider_type=ai_provider_type)

@@ -1,5 +1,3 @@
-"""월간 리포트 생성 및 관리"""
-
 import logging
 from calendar import monthrange
 from typing import Callable, Dict, List, Optional
@@ -10,6 +8,7 @@ from .db_schema import get_monthly_report_schema
 from ..analyzers.monthly_analyzer import MonthlyAnalyzer
 from ..common.notion_blocks import build_ai_feedback_blocks, append_blocks_batched
 from ..common.types import ReportProcessResult
+from ..common.singleton import SimpleSingleton
 
 logger = logging.getLogger(__name__)
 
@@ -180,11 +179,12 @@ class MonthlyReportManager:
         await self.client.create_relation(
             page_id=page_id,
             property_name="주간리포트",
-            target_page_ids=weekly_report_ids
+            target_page_ids=weekly_report_ids,
+            silent=True  # 선택적 Relation이므로 에러 로그 억제
         )
         logger.info("✅ 주간 리포트 Relation 연결 완료")
       except Exception as e:
-        logger.warning(f"⚠️ 주간 리포트 Relation 연결 실패 (선택사항): {e}")
+        logger.debug(f"ℹ️ 주간 리포트 Relation 연결 건너뜀 (선택사항): {e}")
         # Relation 연결 실패는 치명적이지 않으므로 계속 진행
 
       logger.info(f"✅ 월간 리포트 생성 완료: {year}-{month:02d}")
@@ -206,12 +206,10 @@ class MonthlyReportManager:
       raise
 
 # Singleton instance
-_monthly_report_manager = None
+_singleton = SimpleSingleton(MonthlyReportManager, param_name="ai_provider_type")
 
 
-def get_monthly_report_manager(
-    ai_provider_type: str = "claude"
-) -> MonthlyReportManager:
+def get_monthly_report_manager(ai_provider_type: str = "claude") -> MonthlyReportManager:
   """
   Get or create singleton MonthlyReportManager instance
 
@@ -221,8 +219,4 @@ def get_monthly_report_manager(
   Returns:
       MonthlyReportManager instance
   """
-  global _monthly_report_manager
-  if _monthly_report_manager is None or _monthly_report_manager.ai_provider_type != ai_provider_type:
-    _monthly_report_manager = MonthlyReportManager(
-        ai_provider_type=ai_provider_type)
-  return _monthly_report_manager
+  return _singleton.get(ai_provider_type=ai_provider_type)

@@ -19,6 +19,8 @@ from ..common.slack_utils import (
   flavor_label,
   get_used_ai_label,
 )
+from ..common.notion_utils import get_user_database_mapping
+from ..common.text_utils import create_preview
 
 logger = logging.getLogger(__name__)
 
@@ -147,15 +149,8 @@ def register_chat_handlers(app):
       user_id = body["user"]["id"]
 
       # Get database_id from unified user mapping
-      user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
-      try:
-        user_db_mapping = json.loads(user_db_mapping_str)
-      except json.JSONDecodeError:
-        logger.error(f"❌ Failed to parse NOTION_USER_DATABASE_MAPPING")
-        user_db_mapping = {}
-
-      user_dbs = user_db_mapping.get(user_id, {})
-      database_id = user_dbs.get("work_log_db")
+      user_dbs = get_user_database_mapping(user_id)
+      database_id = user_dbs.get("work_log_db") if user_dbs else None
 
       if not database_id:
         logger.error(f"❌ No database mapping found for user: {user_id}")
@@ -334,14 +329,7 @@ def register_chat_handlers(app):
       user_id = body["user"]["id"]
 
       # Get database mappings from unified user mapping
-      user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
-      try:
-        user_db_mapping = json.loads(user_db_mapping_str)
-      except json.JSONDecodeError:
-        logger.error(f"❌ Failed to parse NOTION_USER_DATABASE_MAPPING")
-        user_db_mapping = {}
-
-      user_dbs = user_db_mapping.get(user_id, {})
+      user_dbs = get_user_database_mapping(user_id)
 
       if not user_dbs:
         logger.error(f"❌ No database mapping found for user: {user_id}")
@@ -439,13 +427,7 @@ def register_chat_handlers(app):
         try:
           analysis = result.get('analysis', '')
           if analysis and isinstance(analysis, str):
-            # 마크다운 텍스트의 미리보기 (처음 1000자)
-            preview_length = 1000
-            if len(analysis) > preview_length:
-              preview = analysis[:preview_length] + f"\n\n... (총 {len(analysis)}자)\n\n"
-            else:
-              preview = analysis
-
+            preview = create_preview(analysis, preview_length=1000, show_total=True)
             thread_text = f"🧵 주간 리포트 미리보기\n\n{preview}\n자세한 내용은 Notion 페이지에서 확인하세요!"
 
             await client.chat_postMessage(
@@ -513,14 +495,7 @@ def register_chat_handlers(app):
       user_id = body["user"]["id"]
 
       # Get database mappings from unified user mapping
-      user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
-      try:
-        user_db_mapping = json.loads(user_db_mapping_str)
-      except json.JSONDecodeError:
-        logger.error(f"❌ Failed to parse NOTION_USER_DATABASE_MAPPING")
-        user_db_mapping = {}
-
-      user_dbs = user_db_mapping.get(user_id, {})
+      user_dbs = get_user_database_mapping(user_id)
 
       if not user_dbs:
         logger.error(f"❌ No database mapping found for user: {user_id}")
@@ -611,13 +586,7 @@ def register_chat_handlers(app):
         try:
           analysis = result.get('analysis', '')
           if analysis and isinstance(analysis, str):
-            # 마크다운 텍스트의 미리보기 (처음 1000자)
-            preview_length = 1000
-            if len(analysis) > preview_length:
-              preview = analysis[:preview_length] + f"\n\n... (총 {len(analysis)}자)\n\n"
-            else:
-              preview = analysis
-
+            preview = create_preview(analysis, preview_length=1000, show_total=True)
             thread_text = f"🧵 월간 리포트 미리보기\n\n{preview}\n자세한 내용은 <{page_url}|Notion 페이지>에서 확인하세요!"
 
             await client.chat_postMessage(

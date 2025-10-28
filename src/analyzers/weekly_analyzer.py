@@ -1,34 +1,19 @@
 """주간 업무일지 분석기"""
 
 import logging
-import os
 from typing import Dict, List, Optional
 
 import pytz
 
 from .. import ai
+from ..common.prompt_utils import load_prompt
+from ..common.notion_utils import extract_page_content
+from ..common.singleton import SimpleSingleton
 
 logger = logging.getLogger(__name__)
 
 # KST timezone
 KST = pytz.timezone('Asia/Seoul')
-
-
-def _load_weekly_analysis_prompt() -> str:
-  """주간 분석 프롬프트 템플릿 로드"""
-  prompt_file = os.path.join(
-      os.path.dirname(__file__),
-      "..",
-      "prompts",
-      "weekly_report_analysis.txt"
-  )
-
-  try:
-    with open(prompt_file, "r", encoding="utf-8") as f:
-      return f.read()
-  except FileNotFoundError:
-    logger.warning(f"⚠️ Prompt file not found: {prompt_file}")
-    return ""
 
 
 class WeeklyAnalyzer:
@@ -46,7 +31,7 @@ class WeeklyAnalyzer:
     self.last_used_ai_provider: Optional[str] = None
 
     # Load prompt template
-    self.prompt_template = _load_weekly_analysis_prompt()
+    self.prompt_template = load_prompt("weekly_report_analysis")
     logger.info(f"✅ WeeklyAnalyzer initialized (AI: {ai_provider_type})")
 
   def extract_work_log_content(self, page: Dict) -> Dict[str, any]:
@@ -109,26 +94,7 @@ class WeeklyAnalyzer:
     Returns:
         페이지 본문 텍스트
     """
-    try:
-      blocks_response = await notion_client.client.blocks.children.list(
-          block_id=page_id
-      )
-      blocks = blocks_response.get("results", [])
-
-      content_parts = []
-      for block in blocks:
-        block_type = block.get("type")
-        block_content = block.get(block_type, {})
-
-        if "rich_text" in block_content:
-          for text_obj in block_content["rich_text"]:
-            if "text" in text_obj:
-              content_parts.append(text_obj["text"]["content"])
-
-      return "\n".join(content_parts)
-    except Exception as e:
-      logger.error(f"❌ Failed to get page content: {e}")
-      return ""
+    return await extract_page_content(notion_client, page_id, format="text")
 
   async def analyze_weekly_logs(
       self,
@@ -209,7 +175,7 @@ class WeeklyAnalyzer:
 
 
 # Singleton instance
-_weekly_analyzer = None
+_singleton = SimpleSingleton(WeeklyAnalyzer, param_name="ai_provider_type")
 
 
 def get_weekly_analyzer(ai_provider_type: str = "claude") -> WeeklyAnalyzer:
@@ -222,7 +188,4 @@ def get_weekly_analyzer(ai_provider_type: str = "claude") -> WeeklyAnalyzer:
   Returns:
       WeeklyAnalyzer instance
   """
-  global _weekly_analyzer
-  if _weekly_analyzer is None or _weekly_analyzer.ai_provider_type != ai_provider_type:
-    _weekly_analyzer = WeeklyAnalyzer(ai_provider_type=ai_provider_type)
-  return _weekly_analyzer
+  return _singleton.get(ai_provider_type=ai_provider_type)
