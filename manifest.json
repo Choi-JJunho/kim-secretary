@@ -29,6 +29,16 @@
                 "command": "/업무일지피드백",
                 "description": "업무일지를 AI가 피드백해줍니다.",
                 "should_escape": false
+            },
+            {
+                "command": "/주간리포트",
+                "description": "주간 리포트를 생성합니다 (STAR 형식, 이력서 조언 포함)",
+                "should_escape": false
+            },
+            {
+                "command": "/월간리포트",
+                "description": "월간 리포트를 생성합니다 (트렌드 분석, 커리어 로드맵 포함)",
+                "should_escape": false
             }
         ]
     },
