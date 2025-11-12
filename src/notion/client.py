@@ -29,7 +29,8 @@ class NotionClient:
   async def query_database(
       self,
       database_id: Optional[str] = None,
-      filter_params: Optional[Dict] = None
+      filter_params: Optional[Dict] = None,
+      sorts: Optional[List[Dict]] = None
   ) -> List[Dict[str, Any]]:
     """
     데이터베이스 조회
@@ -37,6 +38,7 @@ class NotionClient:
     Args:
         database_id: 데이터베이스 ID (없으면 기본값 사용)
         filter_params: 필터 조건
+        sorts: 정렬 조건 (예: [{"property": "작성일", "direction": "ascending"}])
 
     Returns:
         페이지 목록
@@ -50,6 +52,8 @@ class NotionClient:
       request_body = {}
       if filter_params:
         request_body["filter"] = filter_params
+      if sorts:
+        request_body["sorts"] = sorts
 
       # Use the correct API: POST /v1/databases/{database_id}/query
       import httpx
