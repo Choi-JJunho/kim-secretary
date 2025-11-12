@@ -411,3 +411,117 @@ def create_monthly_report_modal(
       }
     ]
   }
+
+
+def create_achievement_analysis_modal(
+    channel_id: str,
+    user_id: str,
+    initial_start_date: Optional[str] = None,
+    initial_end_date: Optional[str] = None
+) -> Dict:
+  """
+  성과 분석 모달을 생성합니다.
+
+  Args:
+      channel_id: Slack 채널 ID
+      user_id: Slack 유저 ID
+      initial_start_date: 초기 시작일 (YYYY-MM-DD), None이면 7일 전
+      initial_end_date: 초기 종료일 (YYYY-MM-DD), None이면 오늘
+
+  Returns:
+      Modal view dictionary
+  """
+  from datetime import timedelta
+
+  now = datetime.now(KST)
+  if not initial_start_date:
+    initial_start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+  if not initial_end_date:
+    initial_end_date = now.strftime("%Y-%m-%d")
+
+  private_metadata = json.dumps({
+    "channel_id": channel_id,
+    "user_id": user_id
+  })
+
+  return {
+    "type": "modal",
+    "callback_id": "achievement_analysis_modal",
+    "private_metadata": private_metadata,
+    "title": {
+      "type": "plain_text",
+      "text": "성과 분석"
+    },
+    "submit": {
+      "type": "plain_text",
+      "text": "분석 시작"
+    },
+    "close": {
+      "type": "plain_text",
+      "text": "취소"
+    },
+    "blocks": [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "업무일지에서 이력서용 성과를 추출하고 STAR 형식으로 변환합니다."
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "input",
+        "block_id": "start_date_block",
+        "element": {
+          "type": "datepicker",
+          "action_id": "start_date",
+          "initial_date": initial_start_date,
+          "placeholder": {
+            "type": "plain_text",
+            "text": "시작일 선택"
+          }
+        },
+        "label": {
+          "type": "plain_text",
+          "text": "시작일"
+        }
+      },
+      {
+        "type": "input",
+        "block_id": "end_date_block",
+        "element": {
+          "type": "datepicker",
+          "action_id": "end_date",
+          "initial_date": initial_end_date,
+          "placeholder": {
+            "type": "plain_text",
+            "text": "종료일 선택"
+          }
+        },
+        "label": {
+          "type": "plain_text",
+          "text": "종료일"
+        }
+      },
+      {
+        "type": "input",
+        "block_id": "ai_provider_block",
+        "element": create_ai_provider_select(include_codex=False),
+        "label": {
+          "type": "plain_text",
+          "text": "AI 모델"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "💡 *분석 결과는 각 업무일지 페이지에 추가됩니다*"
+          }
+        ]
+      }
+    ]
+  }

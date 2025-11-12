@@ -39,6 +39,11 @@
                 "command": "/월간리포트",
                 "description": "월간 리포트를 생성합니다 (트렌드 분석, 커리어 로드맵 포함)",
                 "should_escape": false
+            },
+            {
+                "command": "/성과분석",
+                "description": "업무일지에서 이력서용 성과를 추출하고 STAR 형식으로 변환합니다",
+                "should_escape": false
             }
         ]
     },

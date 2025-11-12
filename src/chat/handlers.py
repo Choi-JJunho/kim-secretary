@@ -12,6 +12,7 @@ from ..commands.work_log_webhook_handler import handle_work_log_webhook_message
 from ..notion.wake_up import get_wake_up_manager
 from ..notion.work_log_agent import get_work_log_manager
 from ..notion.weekly_report_agent import get_weekly_report_manager
+from ..notion.achievement_agent import get_achievement_agent
 from ..common.slack_utils import (
   build_initial_text,
   build_progress_text,
@@ -622,4 +623,189 @@ def register_chat_handlers(app):
       await ack(
           response_action="errors",
           errors={"year_block": "처리 중 오류가 발생했습니다. 다시 시도해주세요."}
+      )
+
+  @app.view("achievement_analysis_modal")
+  async def handle_achievement_analysis_submission(ack, body, client, view, logger):
+    """Handle achievement analysis modal submission"""
+
+    try:
+      # Extract form values
+      values = view["state"]["values"]
+
+      start_date = values["start_date_block"]["start_date"]["selected_date"]
+      end_date = values["end_date_block"]["end_date"]["selected_date"]
+      ai_provider = values["ai_provider_block"]["ai_provider"]["selected_option"]["value"]
+
+      user_id = body["user"]["id"]
+
+      # Get database mappings from unified user mapping
+      user_dbs = get_user_database_mapping(user_id)
+
+      if not user_dbs:
+        logger.error(f"❌ No database mapping found for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 데이터베이스 매핑을 찾을 수 없습니다.\n"
+                 f"관리자에게 문의하세요. (User ID: {user_id})"
+        )
+        return
+
+      work_log_db_id = user_dbs.get("work_log_db")
+
+      if not work_log_db_id:
+        logger.error(f"❌ No work_log_db found for user: {user_id}")
+        await ack()
+        await client.chat_postMessage(
+            channel=REPORT_CHANNEL_ID,
+            text=f"<@{user_id}>님의 업무일지 데이터베이스를 찾을 수 없습니다.\n"
+                 f"관리자에게 문의하세요."
+        )
+        return
+
+      logger.info(
+          f"🎯 Processing achievement analysis: start={start_date}, end={end_date}, "
+          f"ai={ai_provider}, user={user_id}"
+      )
+
+      # Acknowledge modal submission immediately
+      await ack()
+
+      # Send to report channel
+      channel_id = REPORT_CHANNEL_ID
+
+      try:
+        # Get achievement agent
+        achievement_agent = get_achievement_agent(ai_provider_type=ai_provider)
+
+        # Send initial progress message
+        progress_msg = await client.chat_postMessage(
+            channel=channel_id,
+            text=f"<@{user_id}>님의 성과 분석 중... 🎯\n\n"
+                 f"📆 기간: {start_date} ~ {end_date}\n"
+                 f"🤖 AI: {ai_provider.upper()}\n"
+                 f"⏳ 진행 중..."
+        )
+
+        msg_ts = progress_msg["ts"]
+
+        # Progress updater
+        async def progress_update(status: str, current: int, total: int):
+          used_ai_label = (achievement_agent.last_used_ai_provider or ai_provider).upper()
+          return await client.chat_update(
+              channel=channel_id,
+              ts=msg_ts,
+              text=f"<@{user_id}>님의 성과 분석 중... 🎯\n\n"
+                   f"📆 기간: {start_date} ~ {end_date}\n"
+                   f"🤖 AI: {used_ai_label}\n"
+                   f"⏳ {status} [{current}/{total}]"
+          )
+
+        # Analyze work logs with progress updates
+        result = await achievement_agent.analyze_work_logs_batch(
+            database_id=work_log_db_id,
+            start_date=start_date,
+            end_date=end_date,
+            progress_callback=progress_update
+        )
+
+        # Calculate total achievements
+        total_achievements = sum(
+            r.get('achievements_count', 0)
+            for r in result.get('results', [])
+            if r.get('success')
+        )
+
+        # Update with final success message
+        used_ai = (achievement_agent.last_used_ai_provider or ai_provider).upper()
+        total_work_logs = result.get('total', 0)
+        analyzed = result.get('analyzed', 0)
+        failed = result.get('failed', 0)
+
+        success_text = (
+          f"<@{user_id}>님의 성과 분석 완료! ✅\n\n"
+          f"📆 기간: {start_date} ~ {end_date}\n"
+          f"🤖 AI: {used_ai}\n"
+          f"📊 업무일지: {total_work_logs}개\n"
+          f"✅ 분석 성공: {analyzed}개\n"
+          f"🎯 추출된 성과: {total_achievements}개\n\n"
+          f"✨ 각 업무일지에서 성과를 확인하세요!"
+        )
+
+        if failed > 0:
+          success_text += f"\n⚠️ 분석 실패: {failed}개"
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=success_text
+        )
+
+        # Post detailed results in thread
+        try:
+          results_list = result.get('results', [])
+          if results_list:
+            # Group by success/failure
+            successful = [r for r in results_list if r.get('success') and r.get('achievements_count', 0) > 0]
+            no_achievements = [r for r in results_list if r.get('success') and r.get('achievements_count', 0) == 0]
+            failed_list = [r for r in results_list if not r.get('success')]
+
+            thread_text = "🧵 성과 분석 상세 결과\n\n"
+
+            if successful:
+              thread_text += "✅ *성과가 추출된 업무일지*\n"
+              for r in successful[:10]:  # Show first 10
+                page_id = r.get('page_id', 'N/A')
+                count = r.get('achievements_count', 0)
+                thread_text += f"• {count}개 성과 추출 - <https://notion.so/{page_id}|페이지 바로가기>\n"
+
+              if len(successful) > 10:
+                thread_text += f"... 외 {len(successful) - 10}개\n"
+
+              thread_text += "\n"
+
+            if no_achievements:
+              thread_text += f"📭 *성과가 추출되지 않은 업무일지: {len(no_achievements)}개*\n\n"
+
+            if failed_list:
+              thread_text += "❌ *분석 실패*\n"
+              for r in failed_list[:5]:  # Show first 5
+                page_id = r.get('page_id', 'N/A')
+                error = r.get('error', 'Unknown error')
+                thread_text += f"• {page_id}: {error}\n"
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=msg_ts,
+                text=thread_text
+            )
+        except Exception as e:
+          logger.warning(f"⚠️ 스레드에 상세 결과 게시 실패: {e}")
+
+        logger.info(f"✅ Achievement analysis completed: {start_date} ~ {end_date}")
+
+      except Exception as e:
+        # Handle other errors
+        error_text = (
+          f"<@{user_id}>님의 성과 분석 실패 ❌\n\n"
+          f"📆 기간: {start_date} ~ {end_date}\n"
+          f"🤖 AI: {ai_provider.upper()}\n"
+          f"❌ 오류: {str(e)}\n\n"
+          f"로그를 확인하거나 다시 시도해주세요."
+        )
+
+        await client.chat_update(
+            channel=channel_id,
+            ts=msg_ts,
+            text=error_text
+        )
+
+        logger.error(f"❌ Failed to analyze achievements: {e}", exc_info=True)
+
+    except Exception as e:
+      logger.error(f"❌ Modal submission handler failed: {e}", exc_info=True)
+      await ack(
+          response_action="errors",
+          errors={"start_date_block": "처리 중 오류가 발생했습니다. 다시 시도해주세요."}
       )

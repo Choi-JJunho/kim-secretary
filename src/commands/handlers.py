@@ -8,7 +8,8 @@ import pytz
 from ..common.slack_modal_builder import (
   create_work_log_feedback_modal,
   create_weekly_report_modal,
-  create_monthly_report_modal
+  create_monthly_report_modal,
+  create_achievement_analysis_modal
 )
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,30 @@ def register_slash_commands(app):
 
       await ack()
       logger.info("✅ Monthly report modal opened")
+
+    except Exception as e:
+      logger.error(f"❌ Failed to open modal: {e}")
+      await ack(text=f"❌ 모달 열기 실패: {str(e)}")
+
+  @app.command("/성과분석")
+  async def handle_achievement_analysis_command(ack, body, client):
+    """Handle /성과분석 command - Open modal for date range selection"""
+    try:
+      logger.info("🎯 Achievement analysis command triggered")
+
+      # Create modal view
+      modal_view = create_achievement_analysis_modal(
+          channel_id=body.get("channel_id"),
+          user_id=body.get("user_id")
+      )
+
+      await client.views_open(
+          trigger_id=body["trigger_id"],
+          view=modal_view
+      )
+
+      await ack()
+      logger.info("✅ Achievement analysis modal opened")
 
     except Exception as e:
       logger.error(f"❌ Failed to open modal: {e}")
