@@ -653,6 +653,7 @@ def register_chat_handlers(app):
         return
 
       work_log_db_id = user_dbs.get("work_log_db")
+      achievements_page_id = user_dbs.get("achievements_page")  # 통합 성과 페이지 ID
 
       if not work_log_db_id:
         logger.error(f"❌ No work_log_db found for user: {user_id}")
@@ -664,9 +665,12 @@ def register_chat_handlers(app):
         )
         return
 
+      if not achievements_page_id:
+        logger.warning(f"⚠️ No achievements_page found for user: {user_id}")
+
       logger.info(
           f"🎯 Processing achievement analysis: start={start_date}, end={end_date}, "
-          f"ai={ai_provider}, user={user_id}"
+          f"ai={ai_provider}, user={user_id}, achievements_page={achievements_page_id}"
       )
 
       # Acknowledge modal submission immediately
@@ -707,6 +711,7 @@ def register_chat_handlers(app):
             database_id=work_log_db_id,
             start_date=start_date,
             end_date=end_date,
+            achievements_page_id=achievements_page_id,
             progress_callback=progress_update
         )
 
@@ -730,8 +735,13 @@ def register_chat_handlers(app):
           f"📊 업무일지: {total_work_logs}개\n"
           f"✅ 분석 성공: {analyzed}개\n"
           f"🎯 추출된 성과: {total_achievements}개\n\n"
-          f"✨ 각 업무일지에서 성과를 확인하세요!"
         )
+
+        if achievements_page_id:
+          page_url = f"https://notion.so/{achievements_page_id.replace('-', '')}"
+          success_text += f"📄 <{page_url}|통합 성과 페이지에서 확인하세요!>"
+        else:
+          success_text += f"⚠️ 통합 성과 페이지가 설정되지 않아 결과를 저장하지 못했습니다."
 
         if failed > 0:
           success_text += f"\n⚠️ 분석 실패: {failed}개"

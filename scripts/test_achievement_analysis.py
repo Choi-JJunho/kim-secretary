@@ -31,6 +31,22 @@ async def test_single_page():
   try:
     load_dotenv()
 
+    # Get achievements_page_id from environment
+    user_db_mapping_str = os.getenv("NOTION_USER_DATABASE_MAPPING", "{}")
+    achievements_page_id = None
+
+    if user_db_mapping_str and user_db_mapping_str != "{}":
+      user_db_mapping = json.loads(user_db_mapping_str)
+      if user_db_mapping:
+        user_id = list(user_db_mapping.keys())[0]
+        user_dbs = user_db_mapping[user_id]
+        achievements_page_id = user_dbs.get("achievements_page")
+
+        if achievements_page_id:
+          logger.info(f"✅ 통합 성과 페이지 ID: {achievements_page_id}")
+        else:
+          logger.warning("⚠️ achievements_page가 설정되지 않았습니다. (통합 페이지에 추가되지 않음)")
+
     # Get page ID from user
     print("\n" + "=" * 80)
     print("단일 페이지 성과 분석 테스트")
@@ -77,6 +93,7 @@ async def test_single_page():
     agent = get_achievement_agent(ai_provider_type=ai_provider)
     result = await agent.analyze_work_log(
         page_id=page_id,
+        achievements_page_id=achievements_page_id,
         progress_callback=progress_callback
     )
 
@@ -111,7 +128,11 @@ async def test_single_page():
           print(f"\n{i}. {star}\n")
 
       print("\n" + "=" * 80)
-      print("✨ Notion에서 확인하세요!")
+      if achievements_page_id:
+        page_url = f"https://notion.so/{achievements_page_id.replace('-', '')}"
+        print(f"✨ 통합 성과 페이지에서 확인하세요: {page_url}")
+      else:
+        print("✨ 성과 분석 완료! (통합 페이지 미설정)")
       print("=" * 80 + "\n")
     else:
       print("❌ 성과 분석 실패!")
@@ -145,6 +166,7 @@ async def test_batch_analysis():
 
     user_alias = user_dbs.get("alias", "이름없음")
     work_log_db_id = user_dbs.get("work_log_db")
+    achievements_page_id = user_dbs.get("achievements_page")
 
     if not work_log_db_id:
       logger.error("❌ work_log_db ID가 설정되지 않았습니다!")
@@ -153,6 +175,11 @@ async def test_batch_analysis():
     logger.info(f"✅ DB 설정 확인 완료")
     logger.info(f"  User: {user_alias} ({user_id})")
     logger.info(f"  Work Log DB: {work_log_db_id}")
+
+    if achievements_page_id:
+      logger.info(f"  통합 성과 페이지: {achievements_page_id}")
+    else:
+      logger.warning("⚠️ achievements_page가 설정되지 않았습니다. (통합 페이지에 추가되지 않음)")
 
     # Get date range
     print("\n" + "=" * 80)
@@ -203,6 +230,7 @@ async def test_batch_analysis():
         database_id=work_log_db_id,
         start_date=start_date,
         end_date=end_date,
+        achievements_page_id=achievements_page_id,
         progress_callback=progress_callback
     )
 
@@ -224,7 +252,11 @@ async def test_batch_analysis():
     print(f"🎯 추출된 총 성과: {total_achievements}개")
 
     print("\n" + "=" * 80)
-    print("✨ Notion에서 확인하세요!")
+    if achievements_page_id:
+      page_url = f"https://notion.so/{achievements_page_id.replace('-', '')}"
+      print(f"✨ 통합 성과 페이지에서 확인하세요: {page_url}")
+    else:
+      print("✨ 배치 분석 완료! (통합 페이지 미설정)")
     print("=" * 80 + "\n")
 
   except Exception as e:

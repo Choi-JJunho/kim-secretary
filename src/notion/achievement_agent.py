@@ -227,16 +227,22 @@ class AchievementAgent:
       logger.error(f"❌ STAR 변환 실패: {e}")
       raise
 
-  async def update_work_log_with_achievements(
+  async def append_to_achievements_page(
       self,
-      page_id: str,
+      achievements_page_id: str,
+      work_log_page_id: str,
+      work_log_title: str,
+      work_log_date: str,
       achievements_star: List[str]
   ):
     """
-    업무일지에 STAR 성과 추가
+    통합 성과 페이지에 STAR 성과 추가
 
     Args:
-        page_id: Notion page ID
+        achievements_page_id: 통합 성과 페이지 ID
+        work_log_page_id: 원본 업무일지 페이지 ID
+        work_log_title: 업무일지 제목
+        work_log_date: 업무일지 날짜
         achievements_star: STAR 형식 성과 목록
     """
     try:
@@ -244,8 +250,13 @@ class AchievementAgent:
         logger.info("📭 추가할 성과가 없습니다.")
         return
 
+      # 페이지 URL 생성
+      page_url = f"https://notion.so/{work_log_page_id.replace('-', '')}"
+
       # STAR 성과를 마크다운으로 변환
-      star_markdown = "\n\n---\n\n## 🎯 추출된 성과 (STAR)\n\n"
+      star_markdown = f"\n\n---\n\n## 📅 {work_log_date} - {work_log_title}\n\n"
+      star_markdown += f"**원본 페이지**: [{work_log_title}]({page_url})\n\n"
+
       for i, star in enumerate(achievements_star, 1):
         star_markdown += f"\n### 성과 {i}\n\n{star}\n"
 
@@ -253,25 +264,18 @@ class AchievementAgent:
       from ..common.notion_blocks import markdown_to_notion_blocks, append_blocks_batched
 
       blocks = markdown_to_notion_blocks(star_markdown)
-      await append_blocks_batched(self.client.client, page_id, blocks)
+      await append_blocks_batched(self.client.client, achievements_page_id, blocks)
 
-      # "AI 생성 완료" 속성 업데이트
-      properties = {
-        "AI 생성 완료": {
-          "select": {"name": "완료"}
-        }
-      }
-      await self.client.update_page(page_id, properties)
-
-      logger.info(f"✅ 업무일지에 {len(achievements_star)}개 성과 추가 완료: {page_id}")
+      logger.info(f"✅ 통합 성과 페이지에 {len(achievements_star)}개 성과 추가 완료: {achievements_page_id}")
 
     except Exception as e:
-      logger.error(f"❌ 업무일지 업데이트 실패: {e}")
+      logger.error(f"❌ 통합 성과 페이지 업데이트 실패: {e}")
       raise
 
   async def analyze_work_log(
       self,
       page_id: str,
+      achievements_page_id: Optional[str] = None,
       progress_callback: Optional[Callable[[str], any]] = None
   ) -> Dict[str, any]:
     """
@@ -279,6 +283,7 @@ class AchievementAgent:
 
     Args:
         page_id: Notion page ID
+        achievements_page_id: 통합 성과 페이지 ID (선택, 없으면 추가 안함)
         progress_callback: Optional callback function to report progress
 
     Returns:
@@ -350,9 +355,18 @@ class AchievementAgent:
       star_text = await self.convert_to_star(achievement, context)
       achievements_star.append(star_text)
 
-    # 5. Notion 업데이트
-    await update_progress("📝 Notion 페이지 업데이트 중...")
-    await self.update_work_log_with_achievements(page_id, achievements_star)
+    # 5. 통합 성과 페이지에 추가 (페이지 ID가 제공된 경우)
+    if achievements_page_id:
+      await update_progress("📝 통합 성과 페이지에 추가 중...")
+      await self.append_to_achievements_page(
+          achievements_page_id=achievements_page_id,
+          work_log_page_id=page_id,
+          work_log_title=title,
+          work_log_date=date,
+          achievements_star=achievements_star
+      )
+    else:
+      logger.info("ℹ️ 통합 성과 페이지 ID가 없어 추가하지 않습니다.")
 
     await update_progress("🏁 분석 완료!")
     logger.info(f"✅ 성과 분석 완료: {page_id} ({len(achievements_star)}개 성과)")
@@ -363,7 +377,9 @@ class AchievementAgent:
       "achievements_count": len(achievements_star),
       "achievements": achievements,
       "achievements_star": achievements_star,
-      "used_ai_provider": self.last_used_ai_provider or self.ai_provider_type
+      "used_ai_provider": self.last_used_ai_provider or self.ai_provider_type,
+      "title": title,
+      "date": date
     }
 
   async def analyze_work_logs_batch(
@@ -371,6 +387,7 @@ class AchievementAgent:
       database_id: str,
       start_date: str,
       end_date: str,
+      achievements_page_id: Optional[str] = None,
       progress_callback: Optional[Callable[[str, int, int], any]] = None
   ) -> Dict[str, any]:
     """
@@ -380,6 +397,7 @@ class AchievementAgent:
         database_id: Notion database ID
         start_date: 시작일 (YYYY-MM-DD)
         end_date: 종료일 (YYYY-MM-DD)
+        achievements_page_id: 통합 성과 페이지 ID (선택, 없으면 추가 안함)
         progress_callback: Optional callback function to report progress (message, current, total)
 
     Returns:
@@ -419,7 +437,10 @@ class AchievementAgent:
           logger.warning(f"⚠️ Progress callback failed: {e}")
 
       try:
-        result = await self.analyze_work_log(page_id)
+        result = await self.analyze_work_log(
+            page_id=page_id,
+            achievements_page_id=achievements_page_id
+        )
         results.append(result)
 
         if result.get("success"):
