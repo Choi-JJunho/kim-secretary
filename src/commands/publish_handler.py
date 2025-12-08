@@ -14,6 +14,7 @@ from typing import Dict, Optional
 from slack_bolt.async_app import AsyncApp
 
 from ..github.junogarden_publisher import JunogardenPublisher
+from ..github.portfolio_updater import get_portfolio_updater
 from ..notion.client import NotionClient
 from ..common.notion_utils import extract_page_content
 
@@ -256,11 +257,38 @@ async def handle_publish_webhook_message(
       )
 
       if result["success"]:
-        # 3. (옵션) 포트폴리오 업데이트
+        # 3. (옵션) 포트폴리오 업데이트 - Claude Code 사용
         portfolio_status = ""
         if update_portfolio:
-          # TODO: 성과 수치 집계 및 업데이트
-          portfolio_status = "\n📊 포트폴리오 업데이트: 예정"
+          await client.chat_update(
+            channel=REPORT_CHANNEL_ID,
+            ts=message_ts,
+            text=(
+              f"📤 {user_mention}업무일지 발행 중...\n"
+              f"📅 날짜: {date}\n"
+              f"📄 제목: {title}\n\n"
+              f"⏳ 포트폴리오 업데이트 중... (Claude Code)"
+            )
+          )
+
+          portfolio_updater = get_portfolio_updater()
+          portfolio_result = await portfolio_updater.update_portfolio(
+            date=date,
+            title=title,
+            content=content
+          )
+
+          if portfolio_result["success"]:
+            msg = portfolio_result.get("message", "완료")
+            sha = portfolio_result.get("commit_sha", "")
+            if sha:
+              portfolio_status = f"\n📊 포트폴리오 업데이트: {msg} ({sha})"
+            else:
+              portfolio_status = f"\n📊 포트폴리오: {msg}"
+          else:
+            error = portfolio_result.get("error", "알 수 없는 오류")
+            portfolio_status = f"\n⚠️ 포트폴리오 업데이트 실패: {error}"
+            logger.warning(f"⚠️ Portfolio update failed: {error}")
 
         # 4. Notion 발행완료 체크
         try:
