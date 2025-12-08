@@ -37,6 +37,13 @@
 - **Notion 통합**: 분석 결과가 통합 성과 페이지에 자동 추가
 - **테스트 스크립트**: 단일/배치 분석 모두 지원
 
+### 📤 업무일지 자동 발행 (Work Log Publishing)
+- **Notion 연동**: Notion에서 "발행" 체크박스 클릭 시 자동 발행
+- **GitHub 발행**: junogarden-web 블로그 저장소에 마크다운 파일 자동 생성
+- **Git 자동화**: 커밋 및 푸시 자동 처리
+- **Slack 알림**: 발행 진행 상황 및 결과 실시간 알림
+- **Vercel 배포**: GitHub 푸시 시 자동 배포
+
 ## 사전 요구사항
 
 - Python 3.13+
@@ -84,6 +91,12 @@ NOTION_USER_DATABASE_MAPPING='{"USER_ID":{"alias":"홍길동","work_log_db":"...
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.0-flash
 GEMINI_TIMEOUT=5000
+
+# GitHub Configuration (업무일지 자동 발행용)
+GITHUB_TOKEN=ghp_...  # Personal Access Token (repo 권한)
+GITHUB_REPO_URL=https://github.com/junotech-labs/junogarden.git
+GIT_AUTHOR_NAME=Secretary Bot
+GIT_AUTHOR_EMAIL=secretary@junogarden.com
 ```
 
 ### 3. 실행
@@ -141,6 +154,10 @@ secretary/
 ├── src/
 │   ├── chat/                   # 채팅 핸들러
 │   ├── commands/               # 슬래시 커맨드
+│   │   ├── handlers.py         # 슬래시 커맨드 핸들러
+│   │   └── publish_handler.py  # 업무일지 발행 핸들러 ⭐ NEW
+│   ├── github/                 # GitHub 연동 ⭐ NEW
+│   │   └── junogarden_publisher.py  # 블로그 발행 관리
 │   ├── notion/                 # Notion API 클라이언트
 │   │   ├── client.py           # 공통 클라이언트
 │   │   ├── wake_up.py          # 기상 기록 관리
@@ -726,3 +743,71 @@ url: https://notion.so/abc123def456
 3. **분석**: 로컬에서 텍스트 분석 또는 통계 생성
 4. **아카이브**: 연도별/월별로 아카이브 생성
 5. **버전 관리**: Git 등으로 변경 이력 추적
+
+## 업무일지 자동 발행 (Work Log Publishing)
+
+Notion에서 업무일지를 작성하고 "발행" 체크박스를 클릭하면 자동으로 junogarden-web 블로그에 발행됩니다.
+
+### 아키텍처
+
+```
+Notion (발행 체크)
+    ↓ Automation (Webhook)
+Slack (메시지 수신)
+    ↓ Socket Mode
+Secretary Bot (처리)
+    ↓ Git Push
+GitHub (junogarden-web)
+    ↓ Vercel Deploy
+블로그 사이트
+```
+
+### 설정 방법
+
+1. **Notion Database Property 추가**
+   - `발행` (Checkbox): 체크 시 발행 트리거
+   - `발행완료` (Checkbox): 발행 성공 시 자동 체크
+   - `발행일시` (Date): 발행 시각 자동 기록
+
+2. **Notion Automation 설정**
+   - Trigger: `발행` property가 checked될 때
+   - Action: Slack Webhook으로 JSON 전송
+   ```json
+   {"action":"publish_work_log","date":"{{작성일}}","page_id":"{{ID}}","user_id":"U12345678"}
+   ```
+
+3. **환경변수 설정** (위 환경변수 섹션 참조)
+
+4. **Docker 볼륨 마운트**
+   ```yaml
+   volumes:
+     - /root/junogarden-web:/app/junogarden-web:rw
+   ```
+
+### 사용 방법
+
+1. Notion에서 업무일지 작성
+2. 작성 완료 후 `발행` 체크박스 클릭
+3. Slack에서 발행 진행 상황 및 결과 확인
+4. 블로그에서 발행된 글 확인
+
+### Slack 알림 예시
+
+```
+📤 @user 업무일지 발행 시작...
+📅 날짜: 2025-12-08
+
+⏳ Notion 페이지 로드 중...
+```
+
+```
+✅ @user 업무일지 발행 완료!
+
+📅 날짜: 2025-12-08
+📄 제목: 2025-12-08 업무일지
+🏷️ 태그: Kotlin, Spring
+🔗 커밋: abc1234
+📁 경로: content/work-logs/daily/2025-12-08.md
+```
+
+자세한 설정 가이드는 [docs/PUBLISH_WORK_LOG_SETUP.md](./docs/PUBLISH_WORK_LOG_SETUP.md)를 참고하세요.
