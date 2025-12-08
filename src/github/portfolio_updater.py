@@ -125,6 +125,11 @@ class PortfolioUpdater:
 
     logger.info(f"🤖 Claude Code 포트폴리오 업데이트 시작: {date}")
 
+    # Git pull로 최신 상태 유지
+    pull_success = await self._git_pull()
+    if not pull_success:
+      logger.warning("⚠️ Git pull 실패, 계속 진행합니다")
+
     # 프롬프트 생성
     prompt = PORTFOLIO_UPDATE_PROMPT.format(
       date=date,
@@ -244,6 +249,34 @@ class PortfolioUpdater:
           return sha_match.group(0)[:7]
 
     return None
+
+
+  async def _git_pull(self) -> bool:
+    """Git pull로 저장소 최신화
+
+    Returns:
+      성공 여부
+    """
+    def run_sync():
+      try:
+        result = subprocess.run(
+          ["git", "pull", "origin", "main"],
+          cwd=str(self.repo_path),
+          capture_output=True,
+          text=True,
+          timeout=60
+        )
+        if result.returncode == 0:
+          logger.info("✅ Git pull 완료")
+          return True
+        else:
+          logger.warning(f"⚠️ Git pull 실패: {result.stderr}")
+          return False
+      except Exception as e:
+        logger.warning(f"⚠️ Git pull 예외: {e}")
+        return False
+
+    return await asyncio.to_thread(run_sync)
 
 
 def get_portfolio_updater() -> PortfolioUpdater:
