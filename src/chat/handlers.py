@@ -9,6 +9,7 @@ from datetime import datetime
 import pytz
 
 from ..commands.work_log_webhook_handler import handle_work_log_webhook_message
+from ..commands.publish_handler import handle_publish_webhook_message
 from ..notion.wake_up import get_wake_up_manager
 from ..notion.work_log_agent import get_work_log_manager
 from ..notion.weekly_report_agent import get_weekly_report_manager
@@ -48,6 +49,18 @@ def register_chat_handlers(app):
 
     logger.info(f"📥 Received work log webhook request")
     await handle_work_log_webhook_message(message, say, client)
+
+  # Publish work log webhook handler - JSON format only
+  @app.message(re.compile(r'\{"action"\s*:\s*"publish_work_log"'))
+  async def handle_publish_webhook(message, say, client):
+    """Handle publish work log webhook message from Notion Automation"""
+    # Check if message is from webhook channel
+    channel_id = message.get("channel")
+    if channel_id != WEBHOOK_CHANNEL_ID:
+      return
+
+    logger.info(f"📤 Received publish work log request")
+    await handle_publish_webhook_message(message, say, client)
 
   @app.action("wake_up_complete")
   async def handle_wake_up_complete(ack, body, client, logger):
