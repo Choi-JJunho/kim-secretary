@@ -87,7 +87,7 @@ class PortfolioUpdater:
     self.repo_path = Path(
       os.getenv("JUNOGARDEN_REPO_PATH", "/app/junogarden-web")
     )
-    self.enabled = os.getenv("CLAUDE_CODE_ENABLED", "false").lower() == "true"
+    self.enabled = os.getenv("CLAUDE_CODE_ENABLED", "true").lower() == "true"
     self.timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT", "300"))  # 5분 기본값
 
   async def update_portfolio(

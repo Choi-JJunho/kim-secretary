@@ -34,8 +34,7 @@ def parse_publish_message(message_text: str) -> Optional[Dict]:
     "action": "publish_work_log",
     "date": "2025-12-08",
     "page_id": "abc123...",
-    "user_id": "U12345678",
-    "update_portfolio": true
+    "user_id": "U12345678"
   }
 
   Args:
@@ -50,8 +49,7 @@ def parse_publish_message(message_text: str) -> Optional[Dict]:
       return {
         "date": data.get("date"),
         "page_id": data.get("page_id"),
-        "user_id": data.get("user_id"),
-        "update_portfolio": data.get("update_portfolio", False)
+        "user_id": data.get("user_id")
       }
   except (json.JSONDecodeError, ValueError):
     pass
@@ -177,7 +175,6 @@ async def handle_publish_webhook_message(
     date = parsed["date"]
     page_id = parsed["page_id"]
     user_id = parsed.get("user_id")
-    update_portfolio = parsed.get("update_portfolio", False)
 
     # 필수 값 검증
     if not page_id:
@@ -257,38 +254,37 @@ async def handle_publish_webhook_message(
       )
 
       if result["success"]:
-        # 3. (옵션) 포트폴리오 업데이트 - Claude Code 사용
+        # 3. 포트폴리오 자동 업데이트 - Claude Code 사용
         portfolio_status = ""
-        if update_portfolio:
-          await client.chat_update(
-            channel=REPORT_CHANNEL_ID,
-            ts=message_ts,
-            text=(
-              f"📤 {user_mention}업무일지 발행 중...\n"
-              f"📅 날짜: {date}\n"
-              f"📄 제목: {title}\n\n"
-              f"⏳ 포트폴리오 업데이트 중... (Claude Code)"
-            )
+        await client.chat_update(
+          channel=REPORT_CHANNEL_ID,
+          ts=message_ts,
+          text=(
+            f"📤 {user_mention}업무일지 발행 중...\n"
+            f"📅 날짜: {date}\n"
+            f"📄 제목: {title}\n\n"
+            f"⏳ 포트폴리오 업데이트 중... (Claude Code)"
           )
+        )
 
-          portfolio_updater = get_portfolio_updater()
-          portfolio_result = await portfolio_updater.update_portfolio(
-            date=date,
-            title=title,
-            content=content
-          )
+        portfolio_updater = get_portfolio_updater()
+        portfolio_result = await portfolio_updater.update_portfolio(
+          date=date,
+          title=title,
+          content=content
+        )
 
-          if portfolio_result["success"]:
-            msg = portfolio_result.get("message", "완료")
-            sha = portfolio_result.get("commit_sha", "")
-            if sha:
-              portfolio_status = f"\n📊 포트폴리오 업데이트: {msg} ({sha})"
-            else:
-              portfolio_status = f"\n📊 포트폴리오: {msg}"
+        if portfolio_result["success"]:
+          msg = portfolio_result.get("message", "완료")
+          sha = portfolio_result.get("commit_sha", "")
+          if sha:
+            portfolio_status = f"\n📊 포트폴리오 업데이트: {msg} ({sha})"
           else:
-            error = portfolio_result.get("error", "알 수 없는 오류")
-            portfolio_status = f"\n⚠️ 포트폴리오 업데이트 실패: {error}"
-            logger.warning(f"⚠️ Portfolio update failed: {error}")
+            portfolio_status = f"\n📊 포트폴리오: {msg}"
+        else:
+          error = portfolio_result.get("error", "알 수 없는 오류")
+          portfolio_status = f"\n⚠️ 포트폴리오 업데이트 실패: {error}"
+          logger.warning(f"⚠️ Portfolio update failed: {error}")
 
         # 4. Notion 발행완료 체크
         try:
