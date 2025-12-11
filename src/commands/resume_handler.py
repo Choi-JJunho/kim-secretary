@@ -530,6 +530,9 @@ async def evaluate_resume_with_classification(
         tmp_path = tmp_file.name
 
     try:
+        # 데이터 디렉토리 미리 생성 (Docker 볼륨 마운트 대응)
+        Path("data/resume_evaluator").mkdir(parents=True, exist_ok=True)
+
         # 워크플로우 설정
         config = WorkflowConfig(
             ai_provider=ai_provider,
@@ -576,6 +579,9 @@ async def evaluate_resume_cafe24(
         tmp_path = tmp_file.name
 
     try:
+        # 데이터 디렉토리 미리 생성 (Docker 볼륨 마운트 대응)
+        Path("data/resume_evaluator/cafe24").mkdir(parents=True, exist_ok=True)
+
         # 카페24 워크플로우 설정
         config = Cafe24WorkflowConfig(
             ai_provider=ai_provider,
