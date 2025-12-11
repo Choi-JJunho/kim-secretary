@@ -7,3 +7,5 @@ pytz
 google-generativeai
 httpx
 packaging
+playwright
+pypdf
