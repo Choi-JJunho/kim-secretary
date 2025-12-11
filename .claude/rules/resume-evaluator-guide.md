@@ -62,8 +62,10 @@ class {Company}JobCategory(str, Enum):
 
 새 파일 `src/resume_evaluator/scraper_{company}.py` 생성:
 
+> **권장**: 정적 job_id 대신 **동적 탐색 방식**을 사용하세요. 채용 사이트는 자주 변경되므로, 키워드 기반 동적 탐색이 유지보수에 유리합니다.
+
 ```python
-"""회사명 채용공고 스크래퍼 (Playwright 기반)"""
+"""회사명 채용공고 스크래퍼 (Playwright 기반) - 동적 탐색"""
 
 import asyncio
 import json
@@ -79,21 +81,20 @@ logger = logging.getLogger(__name__)
 
 
 class {Company}JobScraper:
-    """회사명 채용공고 스크래퍼"""
+    """회사명 채용공고 스크래퍼 - 동적 탐색"""
 
     BASE_URL = "https://careers.{company}.com"
-    JOB_DETAIL_URL = "https://careers.{company}.com/job"
 
-    # 직군별 job_id 매핑
-    JOB_IDS_BY_CATEGORY: dict[{Company}JobCategory, list[str]] = {
+    # 직군별 키워드 매핑 (제목/태그에서 매칭)
+    # 정적 job_id 대신 키워드로 동적 분류
+    CATEGORY_KEYWORDS: dict[{Company}JobCategory, list[str]] = {
         {Company}JobCategory.BACKEND: [
-            "job_id_1",
-            "job_id_2",
+            "server", "backend", "백엔드", "서버 개발",
         ],
         {Company}JobCategory.FRONTEND: [
-            "job_id_3",
+            "frontend", "프론트엔드", "web developer",
         ],
-        # ... 직군별 채용공고 ID 추가
+        # ... 직군별 키워드 추가
     }
 
     def __init__(self, data_dir: str = "data/resume_evaluator/{company}"):
@@ -104,28 +105,48 @@ class {Company}JobScraper:
     async def scrape_positions_by_category(
         self,
         category: {Company}JobCategory,
-        headless: bool = True
+        headless: bool = True,
+        max_jobs: int = 10
     ) -> ScrapedData:
-        """특정 직군의 포지션 스크래핑"""
-        job_ids = self.JOB_IDS_BY_CATEGORY.get(category, [])
-        if not job_ids:
-            return ScrapedData(positions=[], source_url=self.BASE_URL)
-
+        """특정 직군의 포지션 스크래핑 (동적 탐색)"""
         positions = []
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=headless)
             page = await browser.new_page()
 
-            for job_id in job_ids:
-                try:
-                    position = await self._scrape_position(page, job_id, category)
-                    if position:
-                        positions.append(position)
-                    await asyncio.sleep(1)  # Rate limiting
-                except Exception as e:
-                    logger.error(f"스크래핑 실패: {job_id}, {e}")
+            try:
+                # 채용 목록 페이지로 이동
+                await page.goto(self.BASE_URL)
+                await page.wait_for_timeout(2000)
 
-            await browser.close()
+                # 페이지를 순회하며 스크래핑
+                page_num = 1
+                scraped_count = 0
+
+                while scraped_count < max_jobs:
+                    logger.info(f"📄 페이지 {page_num} 스크래핑 중...")
+
+                    # 현재 페이지에서 해당 카테고리 공고 스크래핑
+                    page_positions = await self._scrape_page_positions(
+                        page, category, max_jobs - scraped_count
+                    )
+                    positions.extend(page_positions)
+                    scraped_count += len(page_positions)
+
+                    if scraped_count >= max_jobs:
+                        break
+
+                    # 다음 페이지로 이동 (사이트 구조에 맞게 구현)
+                    if not await self._goto_next_page(page, page_num + 1):
+                        break
+                    page_num += 1
+                    await page.wait_for_timeout(1000)
+
+            except Exception as e:
+                logger.error(f"❌ 스크래핑 실패: {e}")
+            finally:
+                await browser.close()
 
         return ScrapedData(
             positions=positions,
@@ -133,82 +154,88 @@ class {Company}JobScraper:
             source_url=f"{self.BASE_URL}?category={category.value}",
         )
 
-    async def _scrape_position(
+    async def _scrape_page_positions(
         self,
         page: Page,
-        job_id: str,
-        category: {Company}JobCategory
-    ) -> Optional[JobRequirement]:
-        """개별 포지션 스크래핑 - 회사별 HTML 구조에 맞게 구현"""
-        url = f"{self.JOB_DETAIL_URL}?id={job_id}"
-        await page.goto(url)
-        await page.wait_for_timeout(3000)
+        category: {Company}JobCategory,
+        max_count: int
+    ) -> list[JobRequirement]:
+        """현재 페이지에서 공고 스크래핑 - 회사별 HTML 구조에 맞게 구현"""
 
         # JavaScript로 데이터 추출 (회사 페이지 구조에 맞게 수정)
         data = await page.evaluate("""
-            () => {
-                const result = {
-                    title: '',
-                    company: '',
-                    requirements: [],
-                    preferred: [],
-                    tech_stack: [],
-                    responsibilities: [],
-                };
+            (categoryKeywords) => {
+                const jobs = [];
 
                 // TODO: 회사 페이지의 HTML 구조에 맞게 선택자 수정
-                // 예: 제목
-                result.title = document.querySelector('h1.job-title')?.textContent?.trim() || '';
+                const jobCards = document.querySelectorAll('.job-card');
 
-                // 예: 회사명
-                result.company = document.querySelector('.company-name')?.textContent?.trim() || '';
+                for (const card of jobCards) {
+                    const title = card.querySelector('.job-title')?.textContent?.trim() || '';
+                    const tags = card.querySelector('.job-tags')?.textContent?.toLowerCase() || '';
 
-                // 예: 인재상/자격요건
-                const reqSection = document.querySelector('.requirements');
-                if (reqSection) {
-                    const items = reqSection.querySelectorAll('li');
-                    items.forEach(item => {
-                        result.requirements.push(item.textContent?.trim());
+                    // 키워드 매칭으로 카테고리 필터링
+                    const searchText = `${title} ${tags}`.toLowerCase();
+                    const matches = categoryKeywords.some(kw => searchText.includes(kw));
+                    if (!matches) continue;
+
+                    // 상세 정보 추출 (사이트 구조에 따라 다름)
+                    jobs.push({
+                        title: title,
+                        requirements: [],  // 상세 페이지에서 추출하거나 목록에서 추출
+                        preferred: [],
+                        tech_stack: [],
+                        responsibilities: [],
                     });
                 }
 
-                // 예: 우대사항
-                const prefSection = document.querySelector('.preferred');
-                if (prefSection) {
-                    const items = prefSection.querySelectorAll('li');
-                    items.forEach(item => {
-                        result.preferred.push(item.textContent?.trim());
-                    });
-                }
-
-                // 예: 기술 스택
-                const techSection = document.querySelector('.tech-stack');
-                if (techSection) {
-                    const items = techSection.querySelectorAll('li');
-                    items.forEach(item => {
-                        result.tech_stack.push(item.textContent?.trim());
-                    });
-                }
-
-                return result;
+                return jobs;
             }
-        """)
+        """, self.CATEGORY_KEYWORDS.get(category, []))
 
-        if not data.get("title"):
-            return None
+        positions = []
+        for item in data[:max_count]:
+            if not item.get("title"):
+                continue
 
-        return JobRequirement(
-            title=data["title"],
-            company=data.get("company", "{Company}"),
-            requirements=data.get("requirements", []),
-            preferred=data.get("preferred", []),
-            tech_stack=data.get("tech_stack", []),
-            responsibilities=data.get("responsibilities", []),
-            job_id=job_id,
-            category=category,
-            scraped_at=datetime.now(),
-        )
+            position = JobRequirement(
+                title=item["title"],
+                company="{Company}",
+                requirements=item.get("requirements", []),
+                preferred=item.get("preferred", []),
+                tech_stack=item.get("tech_stack", []),
+                responsibilities=item.get("responsibilities", []),
+                job_id=f"{company}_{hash(item['title']) % 100000:05d}",
+                category=category,
+                scraped_at=datetime.now(),
+            )
+            positions.append(position)
+            logger.info(f"✅ {position.title} 스크래핑 완료")
+
+        return positions
+
+    async def _goto_next_page(self, page: Page, next_page_num: int) -> bool:
+        """다음 페이지로 이동 - 사이트 구조에 맞게 구현"""
+        try:
+            # TODO: 사이트의 페이지네이션 구조에 맞게 수정
+            next_link = page.locator(f'a.pagination:has-text("{next_page_num}")')
+            if await next_link.count() > 0:
+                await next_link.click()
+                await page.wait_for_timeout(1500)
+                return True
+            return False
+        except Exception:
+            return False
 ```
+
+#### 동적 탐색 vs 정적 job_id
+
+| 방식 | 장점 | 단점 |
+|------|------|------|
+| **동적 탐색 (권장)** | 사이트 변경에 유연, 새 공고 자동 감지 | 키워드 매핑 필요, 초기 구현 복잡 |
+| **정적 job_id** | 구현 단순, 정확한 타겟팅 | 사이트 변경 시 수동 업데이트 필요 |
+
+기존 토스/카페24 스크래퍼는 동적 탐색 방식으로 구현되어 있습니다. 참고: `scraper.py`, `scraper_cafe24.py`
 
 ### Step 3: 직군 분류기 확장 (`job_classifier.py`)
 
@@ -357,6 +384,8 @@ class EvaluationResult:
 2. **Headless 모드**: 프로덕션에서는 `headless=True`
 3. **캐싱**: `scraped_{category}.json`으로 카테고리별 캐싱
 4. **해시 기반 변경 감지**: `content_hash`로 불필요한 재생성 방지
+5. **동적 탐색 권장**: 정적 job_id 대신 키워드 기반 동적 탐색 사용
+6. **페이지네이션/무한스크롤**: 사이트 구조에 맞게 구현 필요
 
 ### 평가 기준 (토스 기준)
 
@@ -372,9 +401,9 @@ class EvaluationResult:
 새 회사 추가 시 체크리스트:
 
 - [ ] `models.py`에 `{Company}JobCategory` Enum 추가
-- [ ] `scraper_{company}.py` 스크래퍼 구현
+- [ ] `scraper_{company}.py` 스크래퍼 구현 (동적 탐색 방식 권장)
 - [ ] 채용공고 HTML 구조 분석 및 선택자 설정
-- [ ] `JOB_IDS_BY_CATEGORY` 직군별 채용공고 ID 매핑
+- [ ] `CATEGORY_KEYWORDS` 직군별 키워드 매핑 (동적 탐색 시)
 - [ ] `prompt_generator_{company}.py` (필요 시) 평가 기준 커스터마이징
 - [ ] `workflow_{company}.py` 워크플로우 통합
 - [ ] `resume_handler.py` Slack 핸들러 연동
