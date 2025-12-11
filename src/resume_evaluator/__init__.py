@@ -1,21 +1,24 @@
 """이력서 평가 워크플로우 모듈
 
-토스 Backend 포지션의 인재상을 스크래핑하고,
+토스 채용공고의 인재상을 스크래핑하고,
 이를 기반으로 이력서를 평가하는 AI Agent 시스템입니다.
 
 워크플로우:
-1. 스크래핑: 토스 채용공고에서 인재상 수집
-2. 프롬프트 생성: 인재상 기반 시스템 프롬프트 생성 (변경 시에만)
-3. 평가: AI Agent가 이력서 평가
+1. 직군 분류: 이력서 분석하여 적합한 직군 추천
+2. 스크래핑: 해당 직군의 토스 채용공고에서 인재상 수집
+3. 프롬프트 생성: 인재상 기반 시스템 프롬프트 생성 (변경 시에만)
+4. 평가: AI Agent가 이력서 평가
 
 사용 예시:
     >>> from src.resume_evaluator import ResumeEvaluationWorkflow, WorkflowConfig
     >>>
     >>> config = WorkflowConfig(ai_provider="claude")
     >>> workflow = ResumeEvaluationWorkflow(config)
-    >>> await workflow.initialize()
-    >>> result = await workflow.evaluate_resume_file("resume.pdf")
-    >>> print(workflow.format_result(result))
+    >>>
+    >>> # 직군 분류 + 평가를 한번에
+    >>> result = await workflow.evaluate_with_classification("resume.pdf")
+    >>> print(f"추천 직군: {result.classification.primary_category.value}")
+    >>> print(f"평가 등급: {result.evaluation.grade.value}")
 
 CLI 사용:
     $ python -m src.resume_evaluator.cli init        # 초기화
@@ -24,6 +27,7 @@ CLI 사용:
 """
 
 from .models import (
+    TossJobCategory,
     PositionCategory,
     EvaluationGrade,
     JobRequirement,
@@ -34,14 +38,17 @@ from .models import (
 from .scraper import TossJobScraper
 from .prompt_generator import PromptGenerator
 from .evaluator import ResumeEvaluator
+from .job_classifier import JobClassifier, ClassificationResult
 from .workflow import (
     WorkflowConfig,
     ResumeEvaluationWorkflow,
+    EvaluationResultWithClassification,
     run_workflow,
 )
 
 __all__ = [
     # Models
+    "TossJobCategory",
     "PositionCategory",
     "EvaluationGrade",
     "JobRequirement",
@@ -52,8 +59,11 @@ __all__ = [
     "TossJobScraper",
     "PromptGenerator",
     "ResumeEvaluator",
+    "JobClassifier",
+    "ClassificationResult",
     # Workflow
     "WorkflowConfig",
     "ResumeEvaluationWorkflow",
+    "EvaluationResultWithClassification",
     "run_workflow",
 ]

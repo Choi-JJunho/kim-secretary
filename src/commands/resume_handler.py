@@ -1,20 +1,117 @@
-"""이력서 평가 Slack 핸들러"""
+"""이력서 평가 Slack 핸들러
+
+PDF 이력서 업로드 시 자동으로 직군 분류 및 평가를 수행합니다.
+"""
 
 import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import aiohttp
 
-from ..resume_evaluator.workflow import ResumeEvaluationWorkflow, WorkflowConfig
-from ..resume_evaluator.models import EvaluationResult, EvaluationGrade
+from ..resume_evaluator.workflow import (
+    ResumeEvaluationWorkflow,
+    WorkflowConfig,
+    EvaluationResultWithClassification,
+)
+from ..resume_evaluator.models import EvaluationResult, EvaluationGrade, TossJobCategory
+from ..resume_evaluator.job_classifier import ClassificationResult
 
 logger = logging.getLogger(__name__)
 
 # 이력서 평가 채널 ID (토스-이력서피드백)
 RESUME_FEEDBACK_CHANNEL_ID = os.getenv("SLACK_RESUME_FEEDBACK_CHANNEL_ID", "C0A2TD94D8T")
+
+
+# 직군별 이모지 매핑
+CATEGORY_EMOJI = {
+    TossJobCategory.BACKEND: ":gear:",
+    TossJobCategory.APP: ":iphone:",
+    TossJobCategory.FRONTEND: ":computer:",
+    TossJobCategory.FULLSTACK: ":tools:",
+    TossJobCategory.INFRA: ":cloud:",
+    TossJobCategory.QA: ":mag:",
+    TossJobCategory.DEVICE: ":electric_plug:",
+}
+
+
+def format_classification_for_slack(classification: ClassificationResult) -> list[dict]:
+    """직군 분류 결과를 Slack Block Kit 형식으로 포맷팅
+
+    Args:
+        classification: 직군 분류 결과
+
+    Returns:
+        Slack Block Kit 블록 리스트
+    """
+    primary = classification.primary_category
+    emoji = CATEGORY_EMOJI.get(primary, ":briefcase:")
+
+    # 신뢰도 표시
+    confidence_bar = "●" * int(classification.confidence * 5) + "○" * (5 - int(classification.confidence * 5))
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "직군 분류 결과",
+                "emoji": True
+            }
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*추천 직군:* {emoji} *{primary.value}*"
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*신뢰도:* {confidence_bar} ({classification.confidence:.0%})"
+                }
+            ]
+        },
+    ]
+
+    # 추가 추천 직군
+    if classification.secondary_categories:
+        secondary_text = ", ".join([
+            f"{CATEGORY_EMOJI.get(cat, ':briefcase:')} {cat.value}"
+            for cat in classification.secondary_categories
+        ])
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*추가 추천 직군:* {secondary_text}"
+            }
+        })
+
+    # 감지된 기술 스택
+    if classification.skills_detected:
+        skills_text = ", ".join(classification.skills_detected[:10])
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*감지된 기술:* {skills_text}"
+            }
+        })
+
+    # 분류 근거
+    if classification.reasoning:
+        reasoning = classification.reasoning[:300] + "..." if len(classification.reasoning) > 300 else classification.reasoning
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*분류 근거:* {reasoning}"
+            }
+        })
+
+    return blocks
 
 
 def format_result_for_slack(result: EvaluationResult) -> list[dict]:
@@ -177,18 +274,46 @@ def format_result_for_slack(result: EvaluationResult) -> list[dict]:
     return blocks
 
 
-async def download_file(url: str, token: str) -> bytes:
-    """Slack 파일 다운로드
+def format_full_result_for_slack(
+    result: EvaluationResultWithClassification,
+    recommended_urls: list[str] = None
+) -> list[dict]:
+    """직군 분류 + 평가 결과를 Slack Block Kit 형식으로 포맷팅
 
     Args:
-        url: 파일 URL
-        token: Slack Bot Token
+        result: 분류 + 평가 결과
+        recommended_urls: 추천 채용공고 URL 목록
 
     Returns:
-        파일 바이트 데이터
+        Slack Block Kit 블록 리스트
     """
-    headers = {"Authorization": f"Bearer {token}"}
+    blocks = []
 
+    # 1. 직군 분류 결과
+    blocks.extend(format_classification_for_slack(result.classification))
+    blocks.append({"type": "divider"})
+
+    # 2. 추천 채용공고 URL
+    if result.recommended_job_urls:
+        url_links = "\n".join([f"• <{url}|채용공고 보기>" for url in result.recommended_job_urls[:3]])
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*:link: 추천 채용공고*\n{url_links}"
+            }
+        })
+        blocks.append({"type": "divider"})
+
+    # 3. 평가 결과
+    blocks.extend(format_result_for_slack(result.evaluation))
+
+    return blocks
+
+
+async def _download_slack_file(url: str, token: str) -> bytes:
+    """Slack 파일 다운로드"""
+    headers = {"Authorization": f"Bearer {token}"}
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as response:
             if response.status != 200:
@@ -196,27 +321,29 @@ async def download_file(url: str, token: str) -> bytes:
             return await response.read()
 
 
-async def evaluate_resume_from_slack(
+async def evaluate_resume_with_classification(
     file_url: str,
     file_name: str,
     token: str,
-    position: str = "Server Developer",
     ai_provider: str = "claude"
-) -> EvaluationResult:
-    """Slack에서 업로드된 이력서 파일 평가
+) -> EvaluationResultWithClassification:
+    """Slack에서 업로드된 이력서 파일을 직군 분류 후 평가
+
+    플로우:
+    1. 이력서에서 직군 자동 분류
+    2. 해당 직군의 채용공고 스크래핑
+    3. 이력서 평가
 
     Args:
         file_url: Slack 파일 URL
         file_name: 파일 이름
         token: Slack Bot Token
-        position: 지원 포지션
         ai_provider: AI 제공자
 
     Returns:
-        EvaluationResult: 평가 결과
+        EvaluationResultWithClassification: 분류 + 평가 결과
     """
-    # 파일 다운로드
-    file_data = await download_file(file_url, token)
+    file_data = await _download_slack_file(file_url, token)
 
     # 임시 파일로 저장
     suffix = Path(file_name).suffix.lower()
@@ -228,26 +355,13 @@ async def evaluate_resume_from_slack(
         # 워크플로우 설정
         config = WorkflowConfig(
             ai_provider=ai_provider,
+            auto_classify=True,
         )
 
         workflow = ResumeEvaluationWorkflow(config)
 
-        # 시스템 프롬프트 로드 시도 (없으면 초기화)
-        try:
-            workflow.evaluator.load_system_prompt_from_file()
-            workflow._initialized = True
-            logger.info("✅ 기존 시스템 프롬프트 로드 완료")
-        except Exception as e:
-            logger.info(f"시스템 프롬프트 로드 실패 ({e}). 워크플로우 초기화를 수행합니다...")
-            await workflow.initialize()
-
-        # 초기화 확인
-        if not workflow._initialized:
-            logger.info("워크플로우가 초기화되지 않았습니다. 초기화를 수행합니다...")
-            await workflow.initialize()
-
-        # 이력서 평가
-        result = await workflow.evaluate_resume_file(tmp_path, position)
+        # 직군 분류 + 평가
+        result = await workflow.evaluate_with_classification(tmp_path)
         return result
 
     finally:
@@ -304,27 +418,40 @@ def register_resume_handler(app):
                 # 토큰 가져오기
                 token = os.getenv("SLACK_BOT_TOKEN")
 
-                # 이력서 평가
-                result = await evaluate_resume_from_slack(
-                    file_url=file_url,
-                    file_name=file_name,
-                    token=token,
-                    position="Server Developer",
-                    ai_provider="claude"
-                )
-
-                # 결과 포맷팅
-                blocks = format_result_for_slack(result)
-
-                # 결과 메시지 업데이트
+                # Step 1: 직군 분류 진행 메시지
                 await client.chat_update(
                     channel=channel_id,
                     ts=msg_ts,
-                    text=f"이력서 평가 완료! 등급: {result.grade.value} ({result.total_score}점)",
+                    text=f"<@{user_id}>님의 이력서 직군 분류 중... :mag:"
+                )
+
+                # 직군 분류 + 이력서 평가
+                result = await evaluate_resume_with_classification(
+                    file_url=file_url,
+                    file_name=file_name,
+                    token=token,
+                    ai_provider="claude"
+                )
+
+                # 결과 포맷팅 (분류 + 평가 + 추천 URL)
+                blocks = format_full_result_for_slack(result)
+
+                # 결과 메시지 업데이트
+                classification = result.classification
+                evaluation = result.evaluation
+
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=msg_ts,
+                    text=f"이력서 분석 완료! 추천 직군: {classification.primary_category.value}, 등급: {evaluation.grade.value} ({evaluation.total_score}점)",
                     blocks=blocks
                 )
 
-                logger.info(f"✅ Resume evaluation completed: {file_name} - Grade {result.grade.value}")
+                logger.info(
+                    f"✅ Resume evaluation completed: {file_name} - "
+                    f"Category: {classification.primary_category.value}, "
+                    f"Grade: {evaluation.grade.value}"
+                )
 
             except Exception as e:
                 logger.error(f"❌ Resume evaluation failed: {e}", exc_info=True)

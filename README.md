@@ -37,6 +37,20 @@
 - **Notion 통합**: 분석 결과가 통합 성과 페이지에 자동 추가
 - **테스트 스크립트**: 단일/배치 분석 모두 지원
 
+### 📄 이력서 평가 (Resume Evaluation)
+- **자동 직군 분류**: PDF 이력서 업로드 시 AI가 적합한 직군 자동 추천
+  - Backend, Frontend, App, Full Stack, Infra, QA, Device 직군 지원
+- **직군별 평가**: 분류된 직군의 토스 채용공고 기준으로 맞춤형 평가
+- **토스 채용공고 스크래핑**: 최신 채용 요구사항 기반 평가 기준 자동 생성
+- **100점 척도 평가**:
+  - 핵심 기술 역량 (40점)
+  - 문제 해결 능력 (25점)
+  - 소프트 스킬 (20점)
+  - 도메인 적합성 (15점)
+- **등급 시스템**: S/A/B/C/D 등급 및 채용 권장 수준 제공
+- **추천 채용공고 링크**: 분류된 직군의 토스 채용 페이지 자동 제공
+- **Slack 전용 채널**: 특정 채널에 PDF 업로드 시 자동 평가
+
 ### 📤 업무일지 자동 발행 (Work Log Publishing)
 - **Notion 연동**: Notion에서 "발행" 체크박스 클릭 시 자동 발행
 - **GitHub 발행**: junogarden-web 블로그 저장소에 마크다운 파일 자동 생성
@@ -76,6 +90,7 @@ SLACK_WAKE_UP_CHANNEL_ID=...
 SLACK_WORK_LOG_WEBHOOK_CHANNEL_ID=...
 SLACK_WORK_LOG_REPORT_CHANNEL_ID=...
 SLACK_REPORT_CHANNEL_ID=...
+SLACK_RESUME_FEEDBACK_CHANNEL_ID=...  # 이력서 평가 전용 채널
 
 # Notion Configuration
 NOTION_API_KEY=...
@@ -155,18 +170,26 @@ secretary/
 │   ├── chat/                   # 채팅 핸들러
 │   ├── commands/               # 슬래시 커맨드
 │   │   ├── handlers.py         # 슬래시 커맨드 핸들러
-│   │   └── publish_handler.py  # 업무일지 발행 핸들러 ⭐ NEW
-│   ├── github/                 # GitHub 연동 ⭐ NEW
+│   │   ├── publish_handler.py  # 업무일지 발행 핸들러
+│   │   └── resume_handler.py   # 이력서 평가 핸들러 ⭐ NEW
+│   ├── github/                 # GitHub 연동
 │   │   └── junogarden_publisher.py  # 블로그 발행 관리
 │   ├── notion/                 # Notion API 클라이언트
 │   │   ├── client.py           # 공통 클라이언트
 │   │   ├── wake_up.py          # 기상 기록 관리
 │   │   ├── work_log_agent.py   # 업무일지 피드백 생성
-│   │   ├── weekly_report_agent.py   # 주간 리포트 생성 (마크다운)
-│   │   ├── monthly_report_agent.py  # 월간 리포트 생성 (마크다운)
-│   │   ├── achievement_agent.py     # 성과 분석 에이전트 ⭐ NEW
+│   │   ├── weekly_report_agent.py   # 주간 리포트 생성
+│   │   ├── monthly_report_agent.py  # 월간 리포트 생성
+│   │   ├── achievement_agent.py     # 성과 분석 에이전트
 │   │   ├── db_schema.py        # 데이터베이스 스키마 정의
-│   │   └── db_initializer.py   # 데이터베이스 초기화 (뷰 지원)
+│   │   └── db_initializer.py   # 데이터베이스 초기화
+│   ├── resume_evaluator/       # 이력서 평가 모듈 ⭐ NEW
+│   │   ├── workflow.py         # 평가 워크플로우 (분류→스크래핑→평가)
+│   │   ├── job_classifier.py   # AI 기반 직군 분류기
+│   │   ├── scraper.py          # 토스 채용공고 스크래퍼 (Playwright)
+│   │   ├── evaluator.py        # 이력서 평가 에이전트
+│   │   ├── prompt_generator.py # 평가 프롬프트 생성기
+│   │   └── models.py           # 데이터 모델 (직군, 평가결과 등)
 │   ├── analyzers/              # AI 분석 모듈
 │   │   ├── weekly_analyzer.py  # 주간 분석 (이력서 연동)
 │   │   ├── monthly_analyzer.py # 월간 분석 (이력서 연동)
@@ -177,17 +200,14 @@ secretary/
 │   │   ├── notion_blocks.py    # Notion 블록 변환
 │   │   └── slack_modal_builder.py  # Slack 모달 빌더
 │   └── prompts/                # AI 프롬프트 템플릿
-│       ├── weekly_report_analysis.txt    # 주간 리포트 프롬프트
-│       ├── monthly_report_analysis.txt   # 월간 리포트 프롬프트
-│       ├── achievement_extraction.txt    # 성과 추출 프롬프트 ⭐ NEW
-│       └── star_format_converter.txt     # STAR 형식 변환 프롬프트
 ├── scripts/                    # 유틸리티 스크립트
 │   ├── batch_generate_weekly_reports.py  # 주간 리포트 배치 생성
 │   ├── batch_generate_monthly_reports.py # 월간 리포트 배치 생성
 │   ├── test_weekly_report.py   # 주간 리포트 테스트
 │   ├── test_monthly_report.py  # 월간 리포트 테스트
-│   ├── test_achievement_analysis.py      # 성과 분석 테스트 ⭐ NEW
-│   └── download_work_logs.py   # 업무일지 다운로드 ⭐ NEW
+│   ├── test_achievement_analysis.py      # 성과 분석 테스트
+│   ├── test_resume_eval.py     # 이력서 평가 테스트 ⭐ NEW
+│   └── download_work_logs.py   # 업무일지 다운로드
 └── Dockerfile                  # Docker 이미지 정의
 ```
 

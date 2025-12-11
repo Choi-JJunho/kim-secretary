@@ -1,16 +1,23 @@
-"""이력서 평가 워크플로우 오케스트레이터"""
+"""이력서 평가 워크플로우 오케스트레이터
 
-import asyncio
+플로우:
+1. 직군 분류: 이력서 분석하여 적합한 직군 추천
+2. 스크래핑: 해당 직군의 토스 채용공고에서 인재상 수집
+3. 프롬프트 생성: 인재상 기반 시스템 프롬프트 생성
+4. 평가: AI Agent가 이력서 평가
+"""
+
+import json
 import logging
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .models import ScrapedData, GeneratedPrompt, EvaluationResult
+from .models import ScrapedData, GeneratedPrompt, EvaluationResult, TossJobCategory
 from .scraper import TossJobScraper
 from .prompt_generator import PromptGenerator
 from .evaluator import ResumeEvaluator
+from .job_classifier import JobClassifier, ClassificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +31,25 @@ class WorkflowConfig:
     headless: bool = True
     force_scrape: bool = False
     force_regenerate: bool = False
+    auto_classify: bool = True  # 이력서에서 직군 자동 분류
+
+
+@dataclass
+class EvaluationResultWithClassification:
+    """직군 분류 결과를 포함한 평가 결과"""
+    classification: ClassificationResult
+    evaluation: EvaluationResult
+    recommended_job_urls: list[str] = field(default_factory=list)
 
 
 class ResumeEvaluationWorkflow:
     """이력서 평가 워크플로우 오케스트레이터
 
     워크플로우:
-    1. 스크래핑: 토스 채용공고에서 인재상 수집
-    2. 프롬프트 생성: 인재상 기반 시스템 프롬프트 생성 (변경 시에만)
-    3. 평가: AI Agent가 이력서 평가
+    1. 직군 분류: 이력서 분석하여 적합한 직군 추천
+    2. 스크래핑: 해당 직군의 토스 채용공고에서 인재상 수집
+    3. 프롬프트 생성: 인재상 기반 시스템 프롬프트 생성 (변경 시에만)
+    4. 평가: AI Agent가 이력서 평가
     """
 
     def __init__(self, config: Optional[WorkflowConfig] = None):
@@ -51,10 +68,12 @@ class ResumeEvaluationWorkflow:
             ai_provider=self.config.ai_provider,
             data_dir=self.config.data_dir
         )
+        self.classifier = JobClassifier(ai_provider=self.config.ai_provider)
 
         # 상태
         self._scraped_data: Optional[ScrapedData] = None
         self._generated_prompt: Optional[GeneratedPrompt] = None
+        self._classification_result: Optional[ClassificationResult] = None
         self._initialized = False
 
     async def initialize(self) -> bool:
@@ -191,6 +210,143 @@ class ResumeEvaluationWorkflow:
             await self.initialize()
 
         return await self.evaluator.evaluate_from_file(file_path, position)
+
+    async def classify_resume(self, resume_text: str) -> ClassificationResult:
+        """이력서 직군 분류
+
+        Args:
+            resume_text: 이력서 텍스트
+
+        Returns:
+            ClassificationResult: 분류 결과
+        """
+        logger.info("🔍 이력서 직군 분류 시작...")
+        result = await self.classifier.classify(resume_text)
+        self._classification_result = result
+        logger.info(f"✅ 직군 분류 완료: {result.primary_category.value} (신뢰도: {result.confidence:.0%})")
+        return result
+
+    async def classify_resume_file(self, file_path: str) -> ClassificationResult:
+        """파일에서 이력서를 읽어 직군 분류
+
+        Args:
+            file_path: 이력서 파일 경로
+
+        Returns:
+            ClassificationResult: 분류 결과
+        """
+        return await self.classifier.classify_from_file(file_path)
+
+    async def evaluate_with_classification(
+        self,
+        file_path: str
+    ) -> EvaluationResultWithClassification:
+        """직군 분류 후 해당 직군 기준으로 평가
+
+        새로운 플로우:
+        1. 이력서에서 직군 분류
+        2. 해당 직군의 채용공고 스크래핑
+        3. 프롬프트 생성
+        4. 이력서 평가
+
+        Args:
+            file_path: 이력서 파일 경로
+
+        Returns:
+            EvaluationResultWithClassification: 분류 + 평가 결과
+        """
+        # Step 1: 직군 분류
+        classification = await self.classify_resume_file(file_path)
+        primary_category = classification.primary_category
+        logger.info(f"📊 분류된 직군: {primary_category.value}")
+
+        # Step 2: 해당 직군의 채용공고 스크래핑 (캐시된 데이터 우선 사용)
+        scraped_data = await self._run_scraping_for_category(primary_category)
+
+        # Step 3: 프롬프트 생성
+        if scraped_data.positions:
+            generated_prompt = self._run_prompt_generation(scraped_data)
+            self.evaluator.load_system_prompt(generated_prompt)
+            self._initialized = True
+        else:
+            # 폴백: 기존 시스템 프롬프트 사용
+            logger.warning(f"⚠️ {primary_category.value} 직군의 채용공고가 없습니다. 기존 프롬프트 사용")
+            if not self._initialized:
+                await self.initialize()
+
+        # Step 4: 이력서 평가
+        position_name = self._get_position_name(primary_category)
+        evaluation = await self.evaluator.evaluate_from_file(file_path, position_name)
+
+        # 추천 채용공고 URL 생성
+        recommended_urls = self._get_recommended_job_urls(primary_category, classification.secondary_categories)
+
+        return EvaluationResultWithClassification(
+            classification=classification,
+            evaluation=evaluation,
+            recommended_job_urls=recommended_urls,
+        )
+
+    async def _run_scraping_for_category(self, category: TossJobCategory) -> ScrapedData:
+        """특정 직군의 채용공고 스크래핑"""
+        cache_path = self.data_dir / f"scraped_{category.value.lower().replace(' ', '_')}.json"
+
+        # 캐시된 데이터가 있으면 사용
+        if cache_path.exists() and not self.config.force_scrape:
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info(f"📦 캐시된 {category.value} 스크래핑 데이터 사용")
+                return ScrapedData.from_dict(data)
+            except Exception as e:
+                logger.warning(f"캐시 로드 실패: {e}")
+
+        # 새로 스크래핑
+        scraped_data = await self.scraper.scrape_positions_by_category(
+            category, headless=self.config.headless
+        )
+
+        # 캐시에 저장
+        if scraped_data.positions:
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(scraped_data.to_dict(), f, ensure_ascii=False, indent=2)
+            logger.info(f"💾 {category.value} 스크래핑 데이터 캐시 저장")
+
+        return scraped_data
+
+    def _get_position_name(self, category: TossJobCategory) -> str:
+        """직군 카테고리에서 포지션명 생성"""
+        mapping = {
+            TossJobCategory.BACKEND: "Server Developer",
+            TossJobCategory.APP: "App Developer",
+            TossJobCategory.FRONTEND: "Frontend Developer",
+            TossJobCategory.FULLSTACK: "Full Stack Developer",
+            TossJobCategory.INFRA: "DevOps Engineer",
+            TossJobCategory.QA: "QA Engineer",
+            TossJobCategory.DEVICE: "Embedded Developer",
+        }
+        return mapping.get(category, "Developer")
+
+    def _get_recommended_job_urls(
+        self,
+        primary: TossJobCategory,
+        secondary: list[TossJobCategory]
+    ) -> list[str]:
+        """추천 채용공고 URL 목록 생성"""
+        urls = []
+
+        # 주 직군 URL
+        primary_url = self.scraper.get_first_job_url_for_category(primary)
+        if primary_url:
+            urls.append(primary_url)
+
+        # 부 직군 URL (최대 2개)
+        for cat in secondary[:2]:
+            url = self.scraper.get_first_job_url_for_category(cat)
+            if url and url not in urls:
+                urls.append(url)
+
+        return urls
 
     def format_result(self, result: EvaluationResult) -> str:
         """평가 결과 포맷팅

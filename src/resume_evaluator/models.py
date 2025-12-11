@@ -8,8 +8,21 @@ from enum import Enum
 from typing import Optional
 
 
+class TossJobCategory(str, Enum):
+    """토스 채용공고 직군 카테고리 (토스 채용페이지 기준)"""
+    ALL = "전체"
+    BACKEND = "Backend"
+    APP = "App"
+    DEVICE = "Device"
+    FRONTEND = "Frontend"
+    FULLSTACK = "Full Stack"
+    INFRA = "Infra"
+    QA = "QA"
+    MILITARY = "병역특례"
+
+
 class PositionCategory(str, Enum):
-    """포지션 카테고리"""
+    """포지션 카테고리 (레거시 호환용)"""
     BACKEND = "Backend"
     FRONTEND = "Frontend"
     APP = "App"
@@ -20,6 +33,19 @@ class PositionCategory(str, Enum):
     QA = "QA"
     INFRA = "Infra"
     OTHER = "Other"
+
+
+# TossJobCategory -> PositionCategory 매핑
+TOSS_TO_POSITION_MAPPING = {
+    TossJobCategory.BACKEND: PositionCategory.BACKEND,
+    TossJobCategory.APP: PositionCategory.APP,
+    TossJobCategory.DEVICE: PositionCategory.OTHER,  # Device는 별도 카테고리 없음
+    TossJobCategory.FRONTEND: PositionCategory.FRONTEND,
+    TossJobCategory.FULLSTACK: PositionCategory.BACKEND,  # Full Stack은 Backend로 분류
+    TossJobCategory.INFRA: PositionCategory.INFRA,
+    TossJobCategory.QA: PositionCategory.QA,
+    TossJobCategory.MILITARY: PositionCategory.OTHER,  # 병역특례는 별도 처리
+}
 
 
 class EvaluationGrade(str, Enum):
