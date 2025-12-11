@@ -236,8 +236,14 @@ async def evaluate_resume_from_slack(
         try:
             workflow.evaluator.load_system_prompt_from_file()
             workflow._initialized = True
-        except FileNotFoundError:
-            logger.info("시스템 프롬프트가 없습니다. 워크플로우 초기화를 수행합니다...")
+            logger.info("✅ 기존 시스템 프롬프트 로드 완료")
+        except Exception as e:
+            logger.info(f"시스템 프롬프트 로드 실패 ({e}). 워크플로우 초기화를 수행합니다...")
+            await workflow.initialize()
+
+        # 초기화 확인
+        if not workflow._initialized:
+            logger.info("워크플로우가 초기화되지 않았습니다. 초기화를 수행합니다...")
             await workflow.initialize()
 
         # 이력서 평가
