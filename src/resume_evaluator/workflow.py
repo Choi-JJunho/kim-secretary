@@ -289,6 +289,9 @@ class ResumeEvaluationWorkflow:
 
     async def _run_scraping_for_category(self, category: TossJobCategory) -> ScrapedData:
         """특정 직군의 채용공고 스크래핑"""
+        # 디렉토리 존재 확인 (Docker 볼륨 마운트 시 필요)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
         cache_path = self.data_dir / f"scraped_{category.value.lower().replace(' ', '_')}.json"
 
         # 캐시된 데이터가 있으면 사용
