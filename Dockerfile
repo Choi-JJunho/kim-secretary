@@ -22,10 +22,8 @@ COPY requirements.txt .
 # Python 패키지 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Playwright Chromium 브라우저 및 의존성 설치 (headless 모드용)
-# apt 캐시 정리하여 디스크 공간 확보
-RUN playwright install chromium \
-    && apt-get update \
+# Playwright Chromium 의존성 먼저 설치 (apt 캐시 정리 후 Chromium 다운로드)
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libnss3 \
         libnspr4 \
@@ -46,7 +44,9 @@ RUN playwright install chromium \
         libpango-1.0-0 \
         libasound2t64 \
         libcairo2 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    && playwright install chromium
 
 # 애플리케이션 코드 복사
 COPY . .
