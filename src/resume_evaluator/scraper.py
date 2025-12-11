@@ -139,6 +139,12 @@ class TossJobScraper:
         # JavaScript로 모든 채용공고 정보 추출
         jobs_data = await page.evaluate("""
             () => {
+                // 알려진 계열사 목록
+                const knownCompanies = [
+                    '토스', '뱅크', '증권', '페이먼츠', '플레이스', '인슈어런스',
+                    '씨엑스', '인컴', '인사이트', '모바일'
+                ];
+
                 const links = Array.from(document.querySelectorAll('a[href*="job-detail?job_id="]'));
                 return links.map(link => {
                     const url = link.getAttribute('href');
@@ -154,11 +160,11 @@ class TossJobScraper:
                     const allText = listItem.textContent || '';
                     const tags = allText.replace(title, '').trim();
 
-                    // 계열사 목록 추출
+                    // 계열사 목록 추출 - 마지막 div들에서 알려진 계열사명만 필터링
                     const companyDivs = link.querySelectorAll('div > div:last-child > div');
                     const companies = Array.from(companyDivs)
                         .map(d => d.textContent.trim())
-                        .filter(t => t && !t.includes('외'));
+                        .filter(t => t && knownCompanies.some(c => t.includes(c)) && !t.includes('외'));
 
                     return { jobId, title, tags, companies };
                 }).filter(job => job.jobId && job.title);
@@ -265,9 +271,22 @@ class TossJobScraper:
         """스크래핑 가능한 직군 목록 반환"""
         return list(self.CATEGORY_KEYWORDS.keys())
 
-    def get_job_url(self, job_id: str) -> str:
-        """job_id로 채용공고 URL 생성"""
-        return f"{self.JOB_DETAIL_URL}?job_id={job_id}"
+    def get_job_url(self, job_id: str, company: Optional[str] = None) -> str:
+        """job_id로 채용공고 URL 생성
+
+        Args:
+            job_id: 채용공고 ID
+            company: 계열사명 (지정시 상세 페이지로 바로 이동)
+
+        Returns:
+            채용공고 URL
+        """
+        from urllib.parse import quote
+        base_url = f"{self.JOB_DETAIL_URL}?job_id={job_id}"
+        if company:
+            # sub_position_id와 company 파라미터를 추가하면 상세 페이지로 바로 이동
+            return f"{base_url}&sub_position_id={job_id}&company={quote(company)}"
+        return base_url
 
     def get_first_job_url_for_category(self, category: TossJobCategory) -> Optional[str]:
         """직군의 첫 번째 채용공고 URL 반환 (캐시된 데이터에서)
@@ -277,7 +296,10 @@ class TossJobScraper:
         """
         cache_key = category.value
         if cache_key in self._job_list_cache and self._job_list_cache[cache_key]:
-            return self.get_job_url(self._job_list_cache[cache_key][0].job_id)
+            job = self._job_list_cache[cache_key][0]
+            # 첫 번째 계열사 정보가 있으면 상세 페이지 URL 반환
+            company = job.companies[0] if job.companies else None
+            return self.get_job_url(job.job_id, company)
         return None
 
     async def _scrape_position(
@@ -303,6 +325,8 @@ class TossJobScraper:
         await page.wait_for_timeout(3000)  # 페이지 로딩 대기
 
         # "공고 보기" 버튼이 있으면 클릭 (여러 계열사가 묶인 경우)
+        detail_url = url  # 기본값은 원래 URL
+        button_clicked = False
         try:
             clicked = await page.evaluate("""
                 () => {
@@ -317,7 +341,11 @@ class TossJobScraper:
                 }
             """)
             if clicked:
+                button_clicked = True
                 await page.wait_for_timeout(2000)
+                # 클릭 후 변경된 URL 저장 (sub_position_id, company 파라미터 포함)
+                detail_url = page.url
+                logger.debug(f"📌 상세 URL: {detail_url}")
         except Exception:
             pass  # 버튼이 없는 경우 무시
 
@@ -414,14 +442,21 @@ class TossJobScraper:
             category, PositionCategory.BACKEND
         ) if category else PositionCategory.BACKEND
 
+        # 버튼 클릭 없이 단일 계열사 공고인 경우, 회사 정보로 상세 URL 구성
+        company = data.get("company", "토스")
+        if not button_clicked and company:
+            from urllib.parse import quote
+            detail_url = f"{self.JOB_DETAIL_URL}?job_id={job_id}&sub_position_id={job_id}&company={quote(company)}"
+
         return JobRequirement(
             title=data["title"],
-            company=data.get("company", "토스"),
+            company=company,
             requirements=data.get("requirements", []),
             preferred=data.get("preferred", []),
             tech_stack=data.get("tech_stack", []),
             responsibilities=data.get("responsibilities", []),
             job_id=job_id,
+            detail_url=detail_url,
             category=position_category,
             scraped_at=datetime.now(),
         )

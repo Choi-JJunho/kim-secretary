@@ -80,6 +80,7 @@ class JobRequirement:
     tech_stack: list[str] = field(default_factory=list)
     responsibilities: list[str] = field(default_factory=list)
     job_id: str = ""
+    detail_url: str = ""  # 상세 페이지 URL (공고 보기 클릭 후의 URL)
     category: PositionCategory = PositionCategory.OTHER
     scraped_at: datetime = field(default_factory=datetime.now)
 
@@ -93,6 +94,7 @@ class JobRequirement:
             "tech_stack": self.tech_stack,
             "responsibilities": self.responsibilities,
             "job_id": self.job_id,
+            "detail_url": self.detail_url,
             "category": self.category.value,
             "scraped_at": self.scraped_at.isoformat(),
         }
@@ -108,6 +110,7 @@ class JobRequirement:
             tech_stack=data.get("tech_stack", []),
             responsibilities=data.get("responsibilities", []),
             job_id=data.get("job_id", ""),
+            detail_url=data.get("detail_url", ""),
             category=PositionCategory(data.get("category", "Other")),
             scraped_at=datetime.fromisoformat(data["scraped_at"]) if "scraped_at" in data else datetime.now(),
         )

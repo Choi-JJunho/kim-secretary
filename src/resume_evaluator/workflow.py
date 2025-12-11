@@ -332,21 +332,45 @@ class ResumeEvaluationWorkflow:
         primary: TossJobCategory,
         secondary: list[TossJobCategory]
     ) -> list[str]:
-        """추천 채용공고 URL 목록 생성"""
+        """추천 채용공고 URL 목록 생성 (상세 페이지 URL)"""
         urls = []
 
-        # 주 직군 URL
-        primary_url = self.scraper.get_first_job_url_for_category(primary)
+        # 주 직군의 첫 번째 스크래핑된 공고의 detail_url 사용
+        primary_url = self._get_detail_url_for_category(primary)
         if primary_url:
             urls.append(primary_url)
 
         # 부 직군 URL (최대 2개)
         for cat in secondary[:2]:
-            url = self.scraper.get_first_job_url_for_category(cat)
+            url = self._get_detail_url_for_category(cat)
             if url and url not in urls:
                 urls.append(url)
 
         return urls
+
+    def _get_detail_url_for_category(self, category: TossJobCategory) -> Optional[str]:
+        """직군에 해당하는 첫 번째 스크래핑된 공고의 상세 URL 반환"""
+        cache_path = self.data_dir / f"scraped_{category.value.lower().replace(' ', '_')}.json"
+
+        if cache_path.exists():
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    positions = data.get("positions", [])
+                    if positions:
+                        # 첫 번째 공고의 detail_url 반환
+                        detail_url = positions[0].get("detail_url", "")
+                        if detail_url:
+                            return detail_url
+                        # detail_url이 없으면 job_id로 기본 URL 생성
+                        job_id = positions[0].get("job_id", "")
+                        if job_id:
+                            return f"{self.scraper.JOB_DETAIL_URL}?job_id={job_id}"
+            except Exception as e:
+                logger.warning(f"캐시 로드 실패: {e}")
+
+        # 폴백: 스크래퍼의 캐시된 job list에서 가져오기
+        return self.scraper.get_first_job_url_for_category(category)
 
     def format_result(self, result: EvaluationResult) -> str:
         """평가 결과 포맷팅

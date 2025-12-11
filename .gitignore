@@ -85,3 +85,14 @@ node_modules/
 *.db
 *.sqlite
 *.sqlite3
+
+# Playwright
+.playwright-mcp/
+
+# Resume files (test)
+*_resume.pdf
+*.pdf
+
+# Scraped data (cached)
+data/resume_evaluator/scraped_*.json
+data/resume_evaluator/*/scraped_*.json
