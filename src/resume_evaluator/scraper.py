@@ -351,6 +351,7 @@ class TossJobScraper:
                     // 인재상 / 자격요건
                     if (text.includes('이런 분과 함께하고 싶어요') ||
                         text.includes('이런 분을 찾고 있어요') ||
+                        text.includes('이런 분을 기다리고 있어요') ||
                         text.includes('자격요건')) {
                         while (sibling && sibling.tagName === 'UL') {
                             const items = sibling.querySelectorAll('li');
@@ -404,7 +405,7 @@ class TossJobScraper:
         """)
 
         if not data.get("title") or not data.get("requirements"):
-            logger.warning(f"⚠️ job_id={job_id}: 필수 데이터 누락")
+            logger.warning(f"⚠️ job_id={job_id}: 필수 데이터 누락 (이미지 전용 공고일 수 있음)")
             return None
 
         # TossJobCategory -> PositionCategory 매핑
