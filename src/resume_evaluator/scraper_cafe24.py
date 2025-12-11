@@ -1,4 +1,4 @@
-"""카페24 채용공고 스크래퍼 (Playwright 기반)"""
+"""카페24 채용공고 스크래퍼 (Playwright 기반) - 동적 탐색"""
 
 import asyncio
 import json
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class Cafe24JobScraper:
-    """카페24 채용공고 스크래퍼"""
+    """카페24 채용공고 스크래퍼 - 동적 탐색"""
 
     BASE_URL = "https://www.cafe24corp.com/recruit/jobs"
 
@@ -28,16 +28,30 @@ class Cafe24JobScraper:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.scraped_data_path = self.data_dir / "scraped_positions.json"
 
+    async def _goto_next_page(self, page: Page, next_page_num: int) -> bool:
+        """다음 페이지로 이동"""
+        try:
+            next_link = page.locator(f'ul.paging li a:has-text("{next_page_num}")')
+            if await next_link.count() > 0:
+                await next_link.click()
+                await page.wait_for_timeout(1500)
+                return True
+            return False
+        except Exception:
+            return False
+
     async def scrape_positions_by_category(
         self,
         category: Cafe24JobCategory,
-        headless: bool = True
+        headless: bool = True,
+        max_jobs: int = 10
     ) -> ScrapedData:
-        """특정 직군의 포지션 스크래핑
+        """특정 직군의 포지션 스크래핑 (동적 탐색)
 
         Args:
             category: 직군 카테고리
             headless: 헤드리스 모드 여부
+            max_jobs: 최대 스크래핑할 공고 수
 
         Returns:
             ScrapedData: 스크래핑된 데이터
@@ -51,22 +65,30 @@ class Cafe24JobScraper:
             page = await browser.new_page()
 
             try:
-                # 채용공고 목록 페이지로 이동
+                # 채용 목록 페이지로 이동
                 await page.goto(self.BASE_URL)
                 await page.wait_for_timeout(2000)
 
-                # 모든 페이지의 채용공고 수집
+                # 모든 페이지를 순회하며 스크래핑
+                category_filter = category.value if category != Cafe24JobCategory.ALL else None
                 page_num = 1
-                while True:
+                scraped_count = 0
+
+                while scraped_count < max_jobs:
                     logger.info(f"📄 페이지 {page_num} 스크래핑 중...")
 
-                    # 현재 페이지에서 채용공고 추출
-                    page_positions = await self._scrape_page_positions(page, category)
+                    # 현재 페이지에서 해당 카테고리 공고 스크래핑
+                    page_positions = await self._scrape_page_positions_with_details(
+                        page, category_filter, max_jobs - scraped_count
+                    )
                     positions.extend(page_positions)
+                    scraped_count += len(page_positions)
 
-                    # 다음 페이지 확인
-                    next_page = await self._goto_next_page(page, page_num + 1)
-                    if not next_page:
+                    if scraped_count >= max_jobs:
+                        break
+
+                    # 다음 페이지로 이동
+                    if not await self._goto_next_page(page, page_num + 1):
                         break
                     page_num += 1
                     await page.wait_for_timeout(1000)
@@ -85,22 +107,23 @@ class Cafe24JobScraper:
         logger.info(f"✅ 총 {len(positions)}개 {category.value} 포지션 스크래핑 완료")
         return scraped_data
 
-    async def _scrape_page_positions(
+    async def _scrape_page_positions_with_details(
         self,
         page: Page,
-        category: Cafe24JobCategory
+        category_filter: Optional[str],
+        max_count: int
     ) -> list[JobRequirement]:
-        """현재 페이지에서 채용공고 추출
+        """현재 페이지에서 공고 목록과 상세 정보를 함께 스크래핑
 
         Args:
             page: Playwright Page 객체
-            category: 필터링할 직군 카테고리
+            category_filter: 필터링할 카테고리 (None이면 전체)
+            max_count: 최대 스크래핑할 공고 수
 
         Returns:
             JobRequirement 리스트
         """
-        category_filter = category.value if category != Cafe24JobCategory.ALL else None
-
+        # JavaScript로 현재 페이지의 모든 공고 정보 추출 (상세 정보 포함)
         data = await page.evaluate("""
             (categoryFilter) => {
                 const allRows = document.querySelectorAll('table tbody tr');
@@ -125,13 +148,13 @@ class Cafe24JobScraper:
                     const detailText = detailRow.querySelector('td')?.textContent || '';
 
                     // 섹션별 파싱
-                    const workMatch = detailText.match(/■\\s*업무내용([\\s\\S]*?)(?=■|$)/);
-                    const reqMatch = detailText.match(/■\\s*자격요건([\\s\\S]*?)(?=■|$)/);
-                    const prefMatch = detailText.match(/■\\s*우대요건([\\s\\S]*?)(?=■|$)/);
+                    const parseSection = (text, sectionName) => {
+                        const regex = new RegExp('■\\\\s*' + sectionName + '([\\\\s\\\\S]*?)(?=■|$)');
+                        const match = text.match(regex);
+                        if (!match) return [];
 
-                    const parseItems = (text) => {
-                        if (!text) return [];
-                        return text.split(/\\n/)
+                        return match[1]
+                            .split(/\\n/)
                             .map(s => s.replace(/^\\s*-\\s*/, '').trim())
                             .filter(s => s && s.length > 2 && !s.startsWith('■') && !s.includes('지원하기'));
                     };
@@ -139,9 +162,9 @@ class Cafe24JobScraper:
                     jobs.push({
                         category: jobCategory,
                         title: title,
-                        responsibilities: parseItems(workMatch?.[1]),
-                        requirements: parseItems(reqMatch?.[1]),
-                        preferred: parseItems(prefMatch?.[1])
+                        responsibilities: parseSection(detailText, '업무내용'),
+                        requirements: parseSection(detailText, '자격요건'),
+                        preferred: parseSection(detailText, '우대요건')
                     });
                 }
 
@@ -150,18 +173,20 @@ class Cafe24JobScraper:
         """, category_filter)
 
         positions = []
-        for item in data:
-            # 카테고리 매핑
+        for item in data[:max_count]:
+            if not item.get("requirements"):
+                continue
+
             pos_category = self._map_to_position_category(item["category"])
 
             position = JobRequirement(
                 title=item["title"],
                 company="카페24",
                 requirements=item["requirements"],
-                preferred=item["preferred"],
-                tech_stack=[],  # 카페24는 별도 기술스택 섹션 없음
-                responsibilities=item["responsibilities"],
-                job_id=f"cafe24_{hash(item['title']) % 10000:04d}",
+                preferred=item.get("preferred", []),
+                tech_stack=[],
+                responsibilities=item.get("responsibilities", []),
+                job_id=f"cafe24_{hash(item['title']) % 100000:05d}",
                 category=pos_category,
                 scraped_at=datetime.now(),
             )
@@ -169,27 +194,6 @@ class Cafe24JobScraper:
             logger.info(f"✅ {position.title} 스크래핑 완료")
 
         return positions
-
-    async def _goto_next_page(self, page: Page, next_page_num: int) -> bool:
-        """다음 페이지로 이동
-
-        Args:
-            page: Playwright Page 객체
-            next_page_num: 이동할 페이지 번호
-
-        Returns:
-            성공 여부
-        """
-        try:
-            # 페이지네이션에서 다음 페이지 링크 찾기
-            next_link = page.locator(f'ul.paging li a:has-text("{next_page_num}")')
-            if await next_link.count() > 0:
-                await next_link.click()
-                await page.wait_for_timeout(1500)
-                return True
-            return False
-        except Exception:
-            return False
 
     def _map_to_position_category(self, cafe24_category: str) -> PositionCategory:
         """카페24 카테고리를 PositionCategory로 매핑"""
@@ -204,6 +208,10 @@ class Cafe24JobScraper:
             "기타": PositionCategory.OTHER,
         }
         return mapping.get(cafe24_category, PositionCategory.OTHER)
+
+    def get_available_categories(self) -> list[Cafe24JobCategory]:
+        """스크래핑 가능한 직군 목록 반환"""
+        return list(Cafe24JobCategory)
 
     def save_scraped_data(self, data: ScrapedData) -> None:
         """스크래핑 데이터 저장"""
@@ -242,10 +250,13 @@ async def main():
     logging.basicConfig(level=logging.INFO)
 
     scraper = Cafe24JobScraper()
-    # 기획/운영 직군만 스크래핑
+
+    # 기획/운영 직군 스크래핑 테스트
+    print("\n🧪 카페24 기획/운영 직군 동적 스크래핑 테스트")
     data = await scraper.scrape_positions_by_category(
         Cafe24JobCategory.PLANNING,
-        headless=True
+        headless=True,
+        max_jobs=3
     )
 
     print(f"\n📊 스크래핑 결과: {len(data.positions)}개 포지션")
