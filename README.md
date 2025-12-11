@@ -109,7 +109,7 @@ NOTION_USER_DATABASE_MAPPING='{"USER_ID":{"alias":"홍길동","work_log_db":"...
 
 # AI Provider - Gemini
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-2.5-pro
 GEMINI_TIMEOUT=5000
 
 # GitHub Configuration (업무일지 자동 발행용)

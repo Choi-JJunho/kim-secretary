@@ -96,3 +96,6 @@ node_modules/
 # Scraped data (cached)
 data/resume_evaluator/scraped_*.json
 data/resume_evaluator/*/scraped_*.json
+data/resume_evaluator/system_prompt.json
+data/resume_evaluator/*/system_prompt.json
+data/resume_evaluator/cafe24/
