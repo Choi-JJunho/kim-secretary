@@ -4,7 +4,6 @@ aiohttp
 notion-client
 apscheduler
 pytz
-google-generativeai
 httpx
 packaging
 playwright

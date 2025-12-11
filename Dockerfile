@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI 설치
-RUN npm install -g @anthropic-ai/claude-code
+# Claude Code CLI 및 Gemini CLI 설치
+RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli
 
 # Python 의존성 파일 복사
 COPY requirements.txt .

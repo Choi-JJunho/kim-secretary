@@ -8,8 +8,13 @@ services:
       # Claude CLI 인증 정보 마운트 (호스트의 .claude 디렉토리)
       # 읽기/쓰기 권한 필요 (CLI가 debug 로그 작성)
       - /root/.claude:/root/.claude
+      # Gemini CLI 인증 정보 마운트 (호스트의 .gemini 디렉토리)
+      - /root/.gemini:/root/.gemini
       # junogarden-web Git 저장소 마운트 (업무일지 발행용)
-      - /root/junogarden-web:/app/junogarden-web
+      - /root/junogarden-web:/app/junogarden-web:rw
+      # Resume evaluator 데이터 저장
+      - /root/kim-secretary-data/resume_evaluator:/app/data/resume_evaluator:rw
+      - /root/kim-secretary-data/resume_evaluator/cafe24:/app/data/resume_evaluator/cafe24:rw
 
     environment:
       # Application Configuration
@@ -23,28 +28,34 @@ services:
       SLACK_WAKE_UP_CHANNEL_ID: ${SLACK_WAKE_UP_CHANNEL_ID}
       SLACK_WORK_LOG_REPORT_CHANNEL_ID: ${SLACK_WORK_LOG_REPORT_CHANNEL_ID}
       SLACK_WORK_LOG_WEBHOOK_CHANNEL_ID: ${SLACK_WORK_LOG_WEBHOOK_CHANNEL_ID}
+      SLACK_REPORT_CHANNEL_ID: ${SLACK_REPORT_CHANNEL_ID}
+      CAFE24_RESUME_FEEDBACK_CHANNEL_ID: ${CAFE24_RESUME_FEEDBACK_CHANNEL_ID}
+      SLACK_RESUME_FEEDBACK_CHANNEL_ID: ${SLACK_RESUME_FEEDBACK_CHANNEL_ID}
 
       # Notion Configuration
       NOTION_API_KEY: ${NOTION_API_KEY}
       NOTION_WAKE_UP_DATABASE_ID: ${NOTION_WAKE_UP_DATABASE_ID}
+      NOTION_WORK_DATABASE_MAPPING: ${NOTION_WORK_DATABASE_MAPPING}
       NOTION_USER_DATABASE_MAPPING: ${NOTION_USER_DATABASE_MAPPING}
-      SLACK_REPORT_CHANNEL_ID: ${SLACK_REPORT_CHANNEL_ID:-}
 
-      # AI Provider - Gemini
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      # AI Provider - Gemini (CLI 방식, API_KEY 불필요)
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-pro}
       GEMINI_TIMEOUT: ${GEMINI_TIMEOUT:-5000}
 
+      # Claude Code
+      CLAUDE_CODE_ENABLED: "true"
+      CLAUDE_CODE_TIMEOUT: "300"
+
       # GitHub Configuration (업무일지 발행용)
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPO_URL: ${GITHUB_REPO_URL:-https://github.com/junotech-labs/junogarden.git}
       JUNOGARDEN_REPO_PATH: /app/junogarden-web
-      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-Secretary Bot}
-      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-secretary@junogarden.com}
 
     # Health check
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys; sys.exit(0)
       interval: 30s
       timeout: 10s
       start_period: 40s
@@ -62,10 +73,10 @@ services:
       resources:
         limits:
           cpus: '1'
-          memory: 512M
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
 
     networks:
       - supabase_default
