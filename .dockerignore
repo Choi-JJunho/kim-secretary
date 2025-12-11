@@ -9,6 +9,7 @@ __pycache__
 *.so
 .Python
 .venv
+.venv-*
 venv/
 env/
 ENV/
@@ -62,3 +63,10 @@ docker-compose.yml
 temp/
 tmp/
 *.tmp
+
+# Data files (generated at runtime)
+data/
+*.pdf
+
+# Test files
+scripts/test_*.py
