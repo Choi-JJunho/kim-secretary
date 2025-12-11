@@ -21,6 +21,19 @@ class TossJobCategory(str, Enum):
     MILITARY = "병역특례"
 
 
+class Cafe24JobCategory(str, Enum):
+    """카페24 채용공고 직군 카테고리"""
+    ALL = "전체직군"
+    PLANNING = "기획/운영"  # PM, 기획자, 운영
+    DEVELOPMENT = "개발/시스템"
+    DESIGN = "디자인"
+    MARKETING = "마케팅"
+    MANAGEMENT = "경영지원"
+    PARTNERSHIP = "제휴/영업"
+    CUSTOMER_SUPPORT = "고객지원"
+    OTHER = "기타"
+
+
 class PositionCategory(str, Enum):
     """포지션 카테고리 (레거시 호환용)"""
     BACKEND = "Backend"
