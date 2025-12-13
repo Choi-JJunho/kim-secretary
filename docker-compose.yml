@@ -15,6 +15,7 @@ services:
       # Resume evaluator 데이터 저장
       - /root/kim-secretary-data/resume_evaluator:/app/data/resume_evaluator:rw
       - /root/kim-secretary-data/resume_evaluator/cafe24:/app/data/resume_evaluator/cafe24:rw
+      - /root/kim-secretary-data/resume_evaluator/wanted:/app/data/resume_evaluator/wanted:rw
 
     environment:
       # Application Configuration

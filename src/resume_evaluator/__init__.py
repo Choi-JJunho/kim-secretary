@@ -3,9 +3,10 @@
 채용공고의 인재상을 스크래핑하고,
 이를 기반으로 이력서를 평가하는 AI Agent 시스템입니다.
 
-지원 회사:
+지원 플랫폼/회사:
 - 토스 (Toss): 개발자 직군 (Backend, Frontend, App 등)
 - 카페24 (Cafe24): PM/기획 직군
+- 원티드 (Wanted): 여러 기업의 개발자 채용공고 (Backend, Frontend, DevOps 등)
 
 워크플로우:
 1. 직군 분류: 이력서 분석하여 적합한 직군 추천 (토스만)
@@ -25,22 +26,38 @@
     >>> workflow = Cafe24EvaluationWorkflow(config)
     >>> await workflow.initialize()
     >>> result = await workflow.evaluate_resume_file("resume.pdf", "PM")
+
+사용 예시 (원티드):
+    >>> from src.resume_evaluator import WantedEvaluationWorkflow, WantedWorkflowConfig
+    >>> from src.resume_evaluator import WantedJobCategory
+    >>> config = WantedWorkflowConfig(ai_provider="claude")
+    >>> workflow = WantedEvaluationWorkflow(config)
+    >>> await workflow.initialize(categories=[WantedJobCategory.BACKEND])
+    >>> result = await workflow.evaluate_resume_file("resume.pdf", "Backend Developer")
+
+    # 특정 기업 기준 평가
+    >>> result = await workflow.evaluate_for_company("resume.pdf", "클래스101")
 """
 
 from .models import (
     TossJobCategory,
     Cafe24JobCategory,
+    WantedJobCategory,
     PositionCategory,
     EvaluationGrade,
     JobRequirement,
     ScrapedData,
     GeneratedPrompt,
     EvaluationResult,
+    WANTED_DUTY_ID_MAP,
+    WANTED_TO_POSITION_MAPPING,
 )
 from .scraper import TossJobScraper
 from .scraper_cafe24 import Cafe24JobScraper
+from .scraper_wanted import WantedJobScraper
 from .prompt_generator import PromptGenerator
 from .prompt_generator_cafe24 import Cafe24PromptGenerator
+from .prompt_generator_wanted import WantedPromptGenerator
 from .evaluator import ResumeEvaluator
 from .job_classifier import JobClassifier, ClassificationResult
 from .workflow import (
@@ -54,17 +71,26 @@ from .workflow_cafe24 import (
     Cafe24EvaluationWorkflow,
     run_cafe24_workflow,
 )
+from .workflow_wanted import (
+    WantedWorkflowConfig,
+    WantedEvaluationWorkflow,
+    WantedEvaluationResult,
+    evaluate_resume_from_wanted,
+)
 
 __all__ = [
     # Models
     "TossJobCategory",
     "Cafe24JobCategory",
+    "WantedJobCategory",
     "PositionCategory",
     "EvaluationGrade",
     "JobRequirement",
     "ScrapedData",
     "GeneratedPrompt",
     "EvaluationResult",
+    "WANTED_DUTY_ID_MAP",
+    "WANTED_TO_POSITION_MAPPING",
     # Components - Toss
     "TossJobScraper",
     "PromptGenerator",
@@ -74,6 +100,9 @@ __all__ = [
     # Components - Cafe24
     "Cafe24JobScraper",
     "Cafe24PromptGenerator",
+    # Components - Wanted
+    "WantedJobScraper",
+    "WantedPromptGenerator",
     # Workflow - Toss
     "WorkflowConfig",
     "ResumeEvaluationWorkflow",
@@ -83,4 +112,9 @@ __all__ = [
     "Cafe24WorkflowConfig",
     "Cafe24EvaluationWorkflow",
     "run_cafe24_workflow",
+    # Workflow - Wanted
+    "WantedWorkflowConfig",
+    "WantedEvaluationWorkflow",
+    "WantedEvaluationResult",
+    "evaluate_resume_from_wanted",
 ]

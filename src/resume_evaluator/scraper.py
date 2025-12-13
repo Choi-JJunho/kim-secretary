@@ -3,13 +3,12 @@
 import asyncio
 import json
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from playwright.async_api import async_playwright, Page, Browser
+from playwright.async_api import async_playwright, Page
 
 from .models import JobRequirement, ScrapedData, PositionCategory, TossJobCategory
 

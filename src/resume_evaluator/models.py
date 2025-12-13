@@ -61,6 +61,65 @@ TOSS_TO_POSITION_MAPPING = {
 }
 
 
+class WantedJobCategory(str, Enum):
+    """원티드 채용공고 직군 카테고리 (duty_id 기반)"""
+    # 개발 직군
+    BACKEND = "서버 개발자"           # duty_id=872
+    FRONTEND = "프론트엔드 개발자"     # duty_id=669
+    FULLSTACK = "풀스택 개발자"        # duty_id=10110
+    APP_IOS = "iOS 개발자"            # duty_id=678
+    APP_ANDROID = "안드로이드 개발자"  # duty_id=677
+    DEVOPS = "DevOps / 시스템 관리자"  # duty_id=674
+    DATA_ENGINEER = "데이터 엔지니어"  # duty_id=655
+    ML_ENGINEER = "머신러닝 엔지니어"  # duty_id=1024
+    JAVA = "자바 개발자"              # duty_id=660
+    PYTHON = "파이썬 개발자"          # duty_id=899
+    DBA = "DBA"                       # duty_id=10231
+    SECURITY = "보안 엔지니어"        # duty_id=671
+    QA = "QA,테스트 엔지니어"         # duty_id=676
+    # 기타 직군
+    PM = "서비스 기획자"              # duty_id=893
+    ALL = "전체"
+
+
+# 원티드 duty_id 매핑
+WANTED_DUTY_ID_MAP = {
+    WantedJobCategory.BACKEND: "872",
+    WantedJobCategory.FRONTEND: "669",
+    WantedJobCategory.FULLSTACK: "10110",
+    WantedJobCategory.APP_IOS: "678",
+    WantedJobCategory.APP_ANDROID: "677",
+    WantedJobCategory.DEVOPS: "674",
+    WantedJobCategory.DATA_ENGINEER: "655",
+    WantedJobCategory.ML_ENGINEER: "1024",
+    WantedJobCategory.JAVA: "660",
+    WantedJobCategory.PYTHON: "899",
+    WantedJobCategory.DBA: "10231",
+    WantedJobCategory.SECURITY: "671",
+    WantedJobCategory.QA: "676",
+    WantedJobCategory.PM: "893",
+}
+
+
+# WantedJobCategory -> PositionCategory 매핑
+WANTED_TO_POSITION_MAPPING = {
+    WantedJobCategory.BACKEND: PositionCategory.BACKEND,
+    WantedJobCategory.FRONTEND: PositionCategory.FRONTEND,
+    WantedJobCategory.FULLSTACK: PositionCategory.BACKEND,
+    WantedJobCategory.APP_IOS: PositionCategory.APP,
+    WantedJobCategory.APP_ANDROID: PositionCategory.APP,
+    WantedJobCategory.DEVOPS: PositionCategory.DEVOPS,
+    WantedJobCategory.DATA_ENGINEER: PositionCategory.DATA,
+    WantedJobCategory.ML_ENGINEER: PositionCategory.ML,
+    WantedJobCategory.JAVA: PositionCategory.BACKEND,
+    WantedJobCategory.PYTHON: PositionCategory.BACKEND,
+    WantedJobCategory.DBA: PositionCategory.DATA,
+    WantedJobCategory.SECURITY: PositionCategory.SECURITY,
+    WantedJobCategory.QA: PositionCategory.QA,
+    WantedJobCategory.PM: PositionCategory.OTHER,
+}
+
+
 class EvaluationGrade(str, Enum):
     """평가 등급"""
     S = "S"  # 90-100: 즉시 채용 권장
