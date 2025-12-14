@@ -1,0 +1,42 @@
+{
+  "user_info": {
+    "name": "홍길동",
+    "age": 30,
+    "job": "회사원",
+    "salary": 50000000,
+    "household": "1인 가구"
+  },
+  "housing": {
+    "housing_type": "monthly_rent",
+    "deposit": 0,
+    "monthly_rent": 500000,
+    "maintenance_fee": 100000,
+    "loan_amount": 0,
+    "loan_interest_rate": 0.0,
+    "planned_move_date": null,
+    "memo": ""
+  },
+  "savings_accounts": [
+    {
+      "name": "청년도약계좌",
+      "monthly_amount": 700000,
+      "is_tax_deductible": true,
+      "deduction_type": "youth_savings"
+    },
+    {
+      "name": "주택청약저축",
+      "monthly_amount": 100000,
+      "is_tax_deductible": true,
+      "deduction_type": "housing_subscription"
+    }
+  ],
+  "ytd_metrics": {
+    "year": 2025,
+    "credit_card_usage": 0,
+    "debit_card_usage": 0
+  },
+  "tax_strategy": {
+    "focus_items": ["월세 세액공제", "신용카드 소득공제"],
+    "notes": ""
+  }
+}

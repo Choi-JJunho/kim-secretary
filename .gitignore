@@ -99,3 +99,6 @@ data/resume_evaluator/*/scraped_*.json
 data/resume_evaluator/system_prompt.json
 data/resume_evaluator/*/system_prompt.json
 data/resume_evaluator/cafe24/
+
+# Finance data (personal info)
+data/finance/
